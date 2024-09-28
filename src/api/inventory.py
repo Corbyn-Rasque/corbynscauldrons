@@ -13,16 +13,15 @@ router = APIRouter(
 
 @router.get("/audit")
 def get_inventory():
-    """ """
-
+    """
+    Function gets inventory and returns of a tuple containing number of potions, potion volume, and total gold.
+    Hardcoded to a single row in the database at this time, and assumes values in the above order.
+    """
     with db.engine.begin() as connection:
         result = connection.execute(sqlalchemy.text("SELECT * FROM global_inventory"))
+        number_of_potions, ml_in_barrels, gold = result.first()
 
-        # For testing inventory
-        # for row in result:
-        #     print(row)
-
-    return {"number_of_potions": 0, "ml_in_barrels": 0, "gold": 0}
+    return {"number_of_potions": number_of_potions, "ml_in_barrels": ml_in_barrels, "gold": gold}
 
 # Gets called once a day
 @router.post("/plan")
@@ -51,6 +50,5 @@ def deliver_capacity_plan(capacity_purchase : CapacityPurchase, order_id: int):
 
     return "OK"
 
-
 # For testing inventory
-# get_inventory()
+# print(get_inventory())
