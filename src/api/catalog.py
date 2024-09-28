@@ -10,14 +10,13 @@ def get_catalog():
     """
     Each unique item combination must have only a single price.
     """
-    print(router)
-
+    
     return [
             {
-                "sku": "RED_POTION_0",
-                "name": "red potion",
+                "sku": "GREEN_POTION_0",
+                "name": "green potion",
                 "quantity": 1,
                 "price": 50,
-                "potion_type": [100, 0, 0, 0],
+                "potion_type": [0, 100, 0, 0],
             }
         ]
