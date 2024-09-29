@@ -44,12 +44,15 @@ def get_bottle_plan():
         num_potions_to_create = num_green_ml // 100
         # connection.execute(sqlalchemy.text(f"UPDATE global_inventory SET num_green_ml = {(num_green_ml % 100)}, num_green_potions = {num_potions_to_create}"))
 
-    return [
-        {
-            "potion_type": [0, 100, 0, 0],
-            "quantity": num_potions_to_create,
-        }
-    ]
+    if num_potions_to_create > 0:
+        return [
+            {
+                "potion_type": [0, 100, 0, 0],
+                "quantity": num_potions_to_create
+            }
+        ]
+    else:
+        return [{}]
 
 # if __name__ == "__main__":
 #     # get_bottle_plan()

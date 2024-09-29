@@ -56,15 +56,10 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
                 return [
                     {
                         "sku": "SMALL_GREEN_BARREL",
-                        "quantity": (gold // barrel.price)
+                        "quantity": gold // barrel.price
                     }
                 ]
-        return [
-            {
-                "sku": "SMALL_GREEN_BARREL",
-                "quantity": 0
-            }
-        ]
+        return [{}]
 
 # my_catalog = [Barrel(sku='MEDIUM_RED_BARREL', ml_per_barrel=2500, potion_type=[1, 0, 0, 0], price=250, quantity=10),
 # Barrel(sku='SMALL_RED_BARREL', ml_per_barrel=500, potion_type=[1, 0, 0, 0], price=100, quantity=10),
