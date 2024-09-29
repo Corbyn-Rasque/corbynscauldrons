@@ -52,7 +52,7 @@ def get_bottle_plan():
             }
         ]
     else:
-        return [{}]
+        return []
 
 # if __name__ == "__main__":
 #     # get_bottle_plan()
