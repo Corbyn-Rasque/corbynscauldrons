@@ -79,7 +79,7 @@ def post_visits(visit_id: int, customers: list[Customer]):
     """
     Which customers visited the shop today?
     """
-    print(customers)
+    print(visit_id, customers)
 
     return "OK"
 
@@ -87,6 +87,8 @@ def post_visits(visit_id: int, customers: list[Customer]):
 @router.post("/")
 def create_cart(new_cart: Customer):
     """ """
+    # print(new_cart)
+
     return {"cart_id": 1}
 
 
@@ -98,6 +100,13 @@ class CartItem(BaseModel):
 def set_item_quantity(cart_id: int, item_sku: str, cart_item: CartItem):
     """ """
 
+    # with db.engine.begin() as connection:
+    #     potions_available = connection.execute(sqlalchemy.text("SELECT num_green_potions FROM global_inventory"))
+    #     if item_sku == "GREEN_POTION_0" and cart_item.quantity <= potions_available:
+    #         return 
+
+    print(cart_id, item_sku, cart_item)
+
     return "OK"
 
 
@@ -108,4 +117,12 @@ class CartCheckout(BaseModel):
 def checkout(cart_id: int, cart_checkout: CartCheckout):
     """ """
 
-    return {"total_potions_bought": 1, "total_gold_paid": 50}
+    print(cart_id, cart_checkout)
+
+    with db.engine.begin() as connection:
+        potions_available = connection.execute(sqlalchemy.text("SELECT num_green_potinos FROM global_inventory"))
+
+        if potions_available >= 1:
+            return {f"total_potions_bought": 1, "total_gold_paid": 50}
+        else:
+            return {f"total_potions_bought": 0, "total_gold_paid": 0}

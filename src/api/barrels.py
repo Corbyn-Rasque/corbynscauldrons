@@ -73,4 +73,4 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
 
 # get_wholesale_purchase_plan(wholesale_catalog = my_catalog)
 
-post_deliver_barrels([Barrel(sku='SMALL_GREEN_BARREL', ml_per_barrel=500, potion_type=[0, 1, 0, 0], price=100, quantity=1)], order_id=7)
+# post_deliver_barrels([Barrel(sku='SMALL_GREEN_BARREL', ml_per_barrel=500, potion_type=[0, 1, 0, 0], price=100, quantity=1)], order_id=7)
