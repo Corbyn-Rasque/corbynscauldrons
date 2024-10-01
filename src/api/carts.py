@@ -123,6 +123,6 @@ def checkout(cart_id: int, cart_checkout: CartCheckout):
         potions_available = connection.execute(sqlalchemy.text("SELECT num_green_potinos FROM global_inventory"))
 
         if potions_available >= 1:
-            return {f"total_potions_bought": 1, "total_gold_paid": 50}
+            return {f"total_potions_bought": 1, "total_gold_paid": 35}
         else:
             return {f"total_potions_bought": 0, "total_gold_paid": 0}

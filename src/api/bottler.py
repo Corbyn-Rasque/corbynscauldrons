@@ -21,9 +21,10 @@ def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int
     print(f"potions delievered: {potions_delivered} order_id: {order_id}")
 
     with db.engine.begin() as connection:
-        num_green_potions = connection.execute(sqlalchemy.text("SELECT num_green_potions FROM global_inventory")).scalar()
+        num_green_potions, num_green_ml, _ = connection.execute(sqlalchemy.text("SELECT num_green_potions FROM global_inventory")).first()
+        num_green_ml = num_green_ml - (potions_delivered[0].quantity * potions_delivered[0].potion_type[1])
         num_green_potions = num_green_potions + potions_delivered[0].quantity
-        connection.execute(sqlalchemy.text(f"UPDATE global_inventory SET num_green_potions = {num_green_potions}"))
+        connection.execute(sqlalchemy.text(f"UPDATE global_inventory SET num_green_potions = {num_green_potions}, num_green_ml = {}"))
 
     return "OK"
 
@@ -42,9 +43,9 @@ def get_bottle_plan():
     with db.engine.begin() as connection:
         num_green_ml = connection.execute(sqlalchemy.text("SELECT num_green_ml FROM global_inventory")).scalar()
         num_potions_to_create = num_green_ml // 100
-        # connection.execute(sqlalchemy.text(f"UPDATE global_inventory SET num_green_ml = {(num_green_ml % 100)}, num_green_potions = {num_potions_to_create}"))
 
     if num_potions_to_create > 0:
+        connection.execute(sqlalchemy.text(f"UPDATE global_inventory SET num_green_ml = {(num_green_ml % 100)}, num_green_potions = {num_potions_to_create}"))
         return [
             {
                 "potion_type": [0, 100, 0, 0],
