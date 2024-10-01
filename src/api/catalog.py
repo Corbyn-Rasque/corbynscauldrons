@@ -14,6 +14,7 @@ def get_catalog():
         num_green_potions = connection.execute(sqlalchemy.text("SELECT num_green_potions FROM global_inventory")).scalar()
 
     if num_green_potions >= 1:
+        print("Posted Catalog")
         return [
                 {
                     "sku": "GREEN_POTION_0",
@@ -24,4 +25,5 @@ def get_catalog():
                 }
             ]
     else:
+        print("Did NOT Post Catalog")
         return []
