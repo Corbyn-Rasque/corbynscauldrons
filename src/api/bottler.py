@@ -116,13 +116,14 @@ def get_bottle_plan():
 
         bottle_plan = []
         for potion_type, quantity in final_order.items():
-            if not quantity:
+            if quantity != 0:
                 bottle_plan.append({ "potion_type": list(potion_type),  # [0, 100, 0, 0],
                                      "quantity": quantity               # Number of potions to create
                                    })
         return bottle_plan
 
-print(get_bottle_plan())
+if __name__ == '__main__':
+    print(get_bottle_plan())
 
 
 # potions = [PotionInventory(potion_type = [0, 100, 0, 0], quantity = 1)]
