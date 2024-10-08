@@ -4,6 +4,10 @@ from pydantic import BaseModel
 from src.api import auth
 import sqlalchemy
 from src import database as db
+import time
+
+CATALOG_NAME = 'catalog'
+CATALOG_COLUMNS = ['r', 'g', 'b', 'd', 'name', 'qty', 'price', 'cost_per_vol', 'listed']
 
 router = APIRouter(
     prefix="/bottler",
@@ -15,17 +19,35 @@ class PotionInventory(BaseModel):
     potion_type: list[int]
     quantity: int
 
+
+# TO IMPLEMENT:
+#   STORING ORDER_ID & DELIVERY INFO IN BOTTLE DELIVERY WAREHOUSE
+#   COST_PER_VOL CALCULATION
+#   PRICE & LISTING STRATEGY
+
+PRICE = 35
+COST_PER_VOL = 0
+LISTED = True
+
 @router.post("/deliver/{order_id}")
 def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int):
     """ """
     print(f"potions delievered: {potions_delivered} order_id: {order_id}")
 
     with db.engine.begin() as connection:
-        num_green_potions, num_green_ml, _ = connection.execute(sqlalchemy.text("SELECT * FROM global_inventory")).first()
-        num_green_ml = num_green_ml - (potions_delivered[0].quantity * potions_delivered[0].potion_type[1])
-        num_green_potions = num_green_potions + potions_delivered[0].quantity
-        connection.execute(sqlalchemy.text(f"UPDATE global_inventory SET num_green_potions = {num_green_potions}, num_green_ml = {num_green_ml}"))
 
+        potions_to_insert = []
+        for potion in potions_delivered:
+            potion_name = ''.join([str(num).zfill(3) for num in potion.potion_type])
+
+            # CHANGE HARD CODED PRICE, COST_PER_VOL, AND LISTING BOOLEAN!
+            potion_tuple = (*potion.potion_type, potion_name, potion.quantity, PRICE, COST_PER_VOL, LISTED)
+            potions_to_insert.append(potion_tuple)
+
+        connection.execute(sqlalchemy.text(f"""INSERT INTO {CATALOG_NAME} ({CATALOG_COLUMNS})
+                                               VALUES {', '.join(str(potion) for potion in potions_to_insert)}
+                                               ON CONFLICT (r, g, b, d)
+                                               DO UPDATE SET qty = {CATALOG_NAME}.qty + EXCLUDED.qty"""))
     return "OK"
 
 @router.post("/plan")
@@ -34,31 +56,84 @@ def get_bottle_plan():
     Go from barrel to bottle.
     """
 
-    # Each bottle has a quantity of what proportion of red, blue, and
-    # green potion to add.
-    # Expressed in integers from 1 to 100 that must sum up to 100.
+    return_keys = ['potion_type', 'quantity']
 
-    # Initial logic: bottle all barrels into red potions.
+    #Strategy
+    target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
+    target_ratio = [0.3, 0.3, 0.4, 0.0]
+    deviation = 15
 
     with db.engine.begin() as connection:
-        num_green_ml = connection.execute(sqlalchemy.text("SELECT num_green_ml FROM global_inventory")).scalar()
-        num_potions_to_create = num_green_ml // 100
+        num_capacity, red, green, blue, dark = connection.execute(sqlalchemy.text("""SELECT num_capacity, red, green, blue, dark
+                                                                                     FROM global_inventory""")).first()
+        on_hand = [ red, green, blue, dark ]
 
-    if num_potions_to_create > 0:
-        connection.execute(sqlalchemy.text(f"UPDATE global_inventory SET num_green_ml = {(num_green_ml % 100)}, num_green_potions = {num_potions_to_create}"))
-        return [
-            {
-                "potion_type": [0, 100, 0, 0],
-                "quantity": num_potions_to_create
-            }
-        ]
-    else:
-        return []
+        total_potions = connection.execute(sqlalchemy.text("""SELECT sum(qty)
+                                                              FROM catalog""")).scalar()
 
-# if __name__ == "__main__":
-#     # get_bottle_plan()
+        ratio_denominator = num_capacity - total_potions
+
+        on_hand_matches = []
+        for potion in target_potions:
+            temp_value = connection.execute(sqlalchemy.text(f"""WITH target_potion AS (SELECT *
+                                                                                       FROM (VALUES {potion})
+                                                                                       AS t(red, green, blue, dark)),
+                                                                    distance AS (
+                                                                             SELECT r, g, b, d, qty,
+                                                                                    SQRT(POWER(catalog.r - target_potion.red, 2) +
+                                                                                    POWER(catalog.g - target_potion.green, 2) +
+                                                                                    POWER(catalog.b - target_potion.blue, 2) +
+                                                                                    POWER(catalog.d - target_potion.dark, 2)
+                                                                                ) AS distance
+                                                                             FROM catalog, target_potion )
+                                                                SELECT r, g, b, d, qty, distance
+                                                                FROM distance
+                                                                WHERE distance <= {deviation} AND qty > 0
+                                                                ORDER BY distance ASC
+                                                                LIMIT {6 // len(target_potions)}""")).all()
+            for potion in temp_value:
+                ratio_denominator += potion[4]
+
+            on_hand_matches.append(temp_value)
+
+
+        # Creates dictionary using potion_type as id, and quantity to produce optimally as a value (according to ratios)
+        # target_potion, match_list & target_ratio are all keyed in the same r, g, b, d order & can be iterated on simultaneously
+        final_order = {}
+        for target_potion, match_list, ratio in zip(target_potions, on_hand_matches, target_ratio):
+            final_order.update(dict.fromkeys([target_potion], int(ratio * ratio_denominator)))
+            for potion in match_list:
+                final_order[target_potion] -= potion[4]
+
+            # This line is disgusting (read from bottom right to top left), but is an extremely compact way to:
+            #   - find the ratio of available barrel volume based on the target ratio for the associated target potion type
+            #   - determine the number of potions that can be produced, based on the color requirements and the above allotments
+            #   - return the number of potions possible to produce, based on the limiting color calculated above across all colors
+            #       - if else -> avoids division by zero & replaces overall value with max possible value
+            final_order[target_potion] = min([
+                int(color_allotment // color_vol_requirement) if color_vol_requirement else final_order[target_potion]
+                for color_vol_requirement, color_allotment in zip(target_potion, [color * ratio for color in on_hand])])
+
+        bottle_plan = []
+        for potion_type, quantity in final_order.items():
+            if not quantity:
+                bottle_plan.append({ "potion_type": list(potion_type),  # [0, 100, 0, 0],
+                                     "quantity": quantity               # Number of potions to create
+                                   })
+        return bottle_plan
+
+print(get_bottle_plan())
 
 
 # potions = [PotionInventory(potion_type = [0, 100, 0, 0], quantity = 1)]
+# [PotionInventory(potion_type=[0, 100, 0, 0], quantity=5)] order_id: 22798
 
-# post_deliver_bottles(potions, 7)
+#Creates a diction of potion names and values, so the largest value can be used to name the potion and create a SKU.
+            # potion_type_dict = dict(zip(['red', 'green', 'blue', 'dark'], potion.potion_type))
+            # predominant_potion = max(potion_type_dict, key = potion_type_dict.get)
+
+
+# post_deliver_bottles([PotionInventory(potion_type=[0, 100, 0, 0], quantity=6),PotionInventory(potion_type=[1, 0, 50, 49], quantity=5)], 22798)
+
+# start_time = time.time()
+# print("--- %0.6s seconds ---" % (time.time() - start_time))

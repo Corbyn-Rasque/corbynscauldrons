@@ -12,6 +12,8 @@
             "args": [
                 "src.api.server:app"
             ],
+            "cwd": "${fileDirname}",
+            "env": {"PYTHONPATH": "${workspaceFolder}${pathSeparator}${env:PYTHONPATH}"},
             "jinja": true,
             "justMyCode": true
         }

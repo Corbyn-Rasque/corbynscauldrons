@@ -10,20 +10,64 @@ def get_catalog():
     """
     Each unique item combination must have only a single price.
     """
-    with db.engine.begin() as connection:
-        num_green_potions = connection.execute(sqlalchemy.text("SELECT num_green_potions FROM global_inventory")).scalar()
+    # Strategy
+    target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0)]
+    deviation = 15
 
-    if num_green_potions >= 1:
-        print("Posted Catalog")
-        return [
-                {
-                    "sku": "GREEN_POTION_0",
-                    "name": "green potion",
-                    "quantity": 1,
-                    "price": 35,
-                    "potion_type": [0, 100, 0, 0],
-                }
-            ]
-    else:
-        print("Did NOT Post Catalog")
-        return []
+    best_matches = []
+    with db.engine.begin() as connection:
+        for potion in target_potions:
+            best_matches.append(connection.execute(sqlalchemy.text(f"""WITH target_potion AS (SELECT *
+                                                                                              FROM (VALUES {potion})
+                                                                                              AS t(red, green, blue, dark)),
+                                                                            distance AS (
+                                                                                     SELECT r, g, b, d, qty, price,
+                                                                                            SQRT(POWER(catalog.r - target_potion.red, 2) +
+                                                                                                 POWER(catalog.g - target_potion.green, 2) +
+                                                                                                 POWER(catalog.b - target_potion.blue, 2) +
+                                                                                                 POWER(catalog.d - target_potion.dark, 2)
+                                                                                        ) AS distance
+                                                                                     FROM catalog, target_potion )
+                                                                        SELECT r, g, b, d, qty, price
+                                                                        FROM distance
+                                                                        WHERE distance <= {deviation} AND qty > 0
+                                                                        ORDER BY distance ASC
+                                                                        LIMIT {6 // len(target_potions)}""")).all())
+        
+        toggle_listed = []
+        for targets in filter(None, best_matches):
+            for potion in targets:
+                    toggle_listed.append(potion[:4])
+
+        connection.execute(sqlalchemy.text(f"""UPDATE catalog
+                                               SET listed = CASE
+                                                    WHEN (r, g, b, d) IN (VALUES {', '.join(str(potion) for potion in toggle_listed)}) THEN TRUE
+                                                    ELSE FALSE
+                                               END;"""))
+
+    for_sale = []
+    for match_list in best_matches:
+        for potion in match_list:
+            for_sale.append({'sku': ''.join([str(num).zfill(3) for num in potion[:4]]),
+                             'name': ''.join([str(num).zfill(3) for num in potion[:4]]),
+                             'quantity': potion[4],
+                             'price': potion[5],
+                             'potion_type': potion[:4],
+                            })
+
+    return for_sale
+
+# [
+#                 {
+#                     "sku": "GREEN_POTION_0",
+#                     "name": "green potion",
+#                     "quantity": 1,
+#                     "price": 35,
+#                     "potion_type": [0, 100, 0, 0],
+#                 }
+#             ]
+
+
+# catalog = [*connection.execute(sqlalchemy.text(f"""SELECT name, qty, price, r, g, b, d
+#                                                            FROM catalog
+#                                                            WHERE listed = TRUE""")).mappings().all()]
