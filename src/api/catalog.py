@@ -39,11 +39,12 @@ def get_catalog():
             for potion in targets:
                     toggle_listed.append(potion[:4])
 
-        connection.execute(sqlalchemy.text(f"""UPDATE catalog
-                                               SET listed = CASE
-                                                    WHEN (r, g, b, d) IN (VALUES {', '.join(str(potion) for potion in toggle_listed)}) THEN TRUE
-                                                    ELSE FALSE
-                                               END;"""))
+        if toggle_listed:
+            connection.execute(sqlalchemy.text(f"""UPDATE catalog
+                                                SET listed = CASE
+                                                        WHEN (r, g, b, d) IN (VALUES {', '.join(str(potion) for potion in toggle_listed)}) THEN TRUE
+                                                        ELSE FALSE
+                                                END;"""))
 
     for_sale = []
     for match_list in best_matches:
@@ -57,6 +58,14 @@ def get_catalog():
 
     return for_sale
 
+if __name__ == '__main__':
+     print(get_catalog())
+
+# with db.engine.begin() as connection:
+#     catalog = [*connection.execute(sqlalchemy.text(f"""SELECT name, qty, price, r, g, b, d
+#                                                        FROM catalog
+#                                                        WHERE listed = TRUE""")).mappings().all()]
+
 # [
 #                 {
 #                     "sku": "GREEN_POTION_0",
@@ -66,8 +75,3 @@ def get_catalog():
 #                     "potion_type": [0, 100, 0, 0],
 #                 }
 #             ]
-
-
-# catalog = [*connection.execute(sqlalchemy.text(f"""SELECT name, qty, price, r, g, b, d
-#                                                            FROM catalog
-#                                                            WHERE listed = TRUE""")).mappings().all()]
