@@ -5,7 +5,7 @@ import sqlalchemy
 from src import database as db
 from enum import Enum
 from math import sqrt, pow
-from pulp import LpMinimize, LpMaximize, LpProblem, LpStatus, lpSum, LpVariable, value
+from pulp import LpMinimize, LpMaximize, LpProblem, LpStatus, lpSum, LpVariable
 
 class BarrelType(Enum):
     RED     =   (1, 0, 0, 0)
@@ -36,16 +36,23 @@ def post_deliver_barrels(barrels_delivered: list[Barrel], order_id: int):
     """
     This function will record your barrel purchase to your database.
     """
-    print(f"barrels delievered: {barrels_delivered} order_id: {order_id}")
+    # print(f"barrels delievered: {barrels_delivered} order_id: {order_id}")
 
-    for barrel in barrels_delivered:
-        if barrel.sku == 'SMALL_GREEN_BARREL':
-            with db.engine.begin() as connection:
-                current = connection.execute(sqlalchemy.text("SELECT * FROM global_inventory")).all()
-                total_ml = current[0][1] + ( barrel.quantity * barrel.ml_per_barrel )
-                total_qty = current[0][0] + barrel.quantity
-                gold = current[0][2] - ( barrel.quantity * barrel.price)
-                connection.execute(sqlalchemy.text(f"UPDATE global_inventory SET num_green_potions = {total_qty}, num_green_ml = {total_ml}, gold = {gold}"))
+    delivered = dict.fromkeys([color.name for color in BarrelType], 0)
+
+    with db.engine.begin() as connection:
+        gold, red, green, blue, dark = connection.execute(sqlalchemy.text(f"""SELECT gold, red, green, blue, dark
+                                                                              FROM global_inventory""")).first()
+
+        for barrel in barrels_delivered:
+            match tuple(barrel.potion_type):
+                case BarrelType.RED.value:      red   += ( barrel.ml_per_barrel * barrel.quantity );    gold -= (barrel.price * barrel.quantity)
+                case BarrelType.GREEN.value:    green += ( barrel.ml_per_barrel * barrel.quantity );    gold -= (barrel.price * barrel.quantity)
+                case BarrelType.BLUE.value:     blue  += ( barrel.ml_per_barrel * barrel.quantity );    gold -= (barrel.price * barrel.quantity)
+                case BarrelType.DARK.value:     dark  += ( barrel.ml_per_barrel * barrel.quantity );    gold -= (barrel.price * barrel.quantity)
+
+        connection.execute(sqlalchemy.text(f"""UPDATE global_inventory
+                                               SET gold = {gold}, red = {red}, green = {green}, blue = {blue}, dark = {dark}"""))
     return "OK"
 
 # Gets called once a day
@@ -54,10 +61,10 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     """
     This function will send your purchase order to the barrel seller.
     """
-    # print(wholesale_catalog)
+    print(wholesale_catalog)
 
     target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
-    target_ratio = [0.2, 0.5, 0.2, 0.1]
+    target_ratio = [0.3, 0.4, 0.3, 0.0]
     deviation = 15
 
     with db.engine.begin() as connection:
@@ -130,7 +137,7 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     if LpStatus[model.status] == 'Optimal':
         for color in potion_colors:
             for size in sizes:
-                if variables[(color, size)].varValue != 0:
+                if variables[(color, size)].varValue > 0.0:
                     purchase_plan.append(
                         {
                         "sku": '_'.join([size, color, 'BARREL']),
@@ -155,7 +162,8 @@ if __name__ == "__main__":
     Barrel(sku='MINI_GREEN_BARREL', ml_per_barrel=200, potion_type=[0, 1, 0, 0], price=60, quantity=1),
     Barrel(sku='MINI_BLUE_BARREL', ml_per_barrel=200, potion_type=[0, 0, 1, 0], price=60, quantity=1)]
 
-    print(get_wholesale_purchase_plan(my_catalog))
+    # print(get_wholesale_purchase_plan(my_catalog))
+    post_deliver_barrels(my_catalog, 420)
 
     # def projection(a, b):
     #     dot_product_scalar = (sum(i*j for i, j in zip(a, b)) / abs(sum(i**2 for i in b)))
