@@ -92,8 +92,6 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     for color, target_volume in zip(potion_colors, [int(ratio * vol_capacity) for ratio in target_ratio]):
         targets.update({color: target_volume})
 
-    print(targets)
-
     starting_volumes = {}
     for color, volume in zip(potion_colors, current_volumes):
         starting_volumes.update({color: volume})
@@ -144,7 +142,7 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
                         "ml_per_barrel": data[color][size]['volume'],
                         "potion_type": BarrelType[color].value,
                         "price": data[color][size]['price'],
-                        "quantity": variables[(color, size)].varValue
+                        "quantity": int(variables[(color, size)].varValue)
                         })
         return purchase_plan
     else:
@@ -163,7 +161,7 @@ if __name__ == "__main__":
     Barrel(sku='MINI_BLUE_BARREL', ml_per_barrel=200, potion_type=[0, 0, 1, 0], price=60, quantity=1)]
 
     # print(get_wholesale_purchase_plan(my_catalog))
-    post_deliver_barrels(my_catalog, 420)
+    # post_deliver_barrels(my_catalog, 420)
 
     # def projection(a, b):
     #     dot_product_scalar = (sum(i*j for i, j in zip(a, b)) / abs(sum(i**2 for i in b)))

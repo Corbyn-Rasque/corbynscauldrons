@@ -19,12 +19,12 @@ def shop_info():
     base_url = os.environ.get("SUPABASE_URL")
 
     headers = {
-        "apikey": shop_info()['api_key'],
-        "Authorization": f"Bearer {shop_info()['api_key']}",  # If authorization is required
+        "apikey": api_key,
+        "Authorization": f"Bearer {api_key}",
         "Accept": "application/json"
     }
 
     return {'api_key': api_key, 'base_url': base_url, 'headers': headers}
 
-shop_time = requests.get(shop_info()['base_url']+'/rest/v1/current_game_time?select=*', headers=shop_info()['headers']).json()
-shop_ratings = requests.get(shop_info()['base_url']+'/rest/v1/rpc/shop_star_ratings', headers=shop_info()['headers']).json()
+time = requests.get(shop_info()['base_url']+'/rest/v1/current_game_time?select=*', headers=shop_info()['headers']).json()
+ratings = requests.get(shop_info()['base_url']+'/rest/v1/rpc/shop_star_ratings', headers=shop_info()['headers']).json()
