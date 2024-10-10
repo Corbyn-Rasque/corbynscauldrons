@@ -7,7 +7,7 @@ from src import database as db
 import time
 
 CATALOG_NAME = 'catalog'
-CATALOG_COLUMNS = ['r', 'g', 'b', 'd', 'name', 'qty', 'price', 'cost_per_vol', 'listed']
+CATALOG_COLUMNS = ('r', 'g', 'b', 'd', 'name', 'qty', 'price', 'cost_per_vol', 'listed')
 
 router = APIRouter(
     prefix="/bottler",
@@ -44,7 +44,7 @@ def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int
             potion_tuple = (*potion.potion_type, potion_name, potion.quantity, PRICE, COST_PER_VOL, LISTED)
             potions_to_insert.append(potion_tuple)
 
-        connection.execute(sqlalchemy.text(f"""INSERT INTO {CATALOG_NAME} ({CATALOG_COLUMNS})
+        connection.execute(sqlalchemy.text(f"""INSERT INTO {CATALOG_NAME} {CATALOG_COLUMNS}
                                                VALUES {', '.join(str(potion) for potion in potions_to_insert)}
                                                ON CONFLICT (r, g, b, d)
                                                DO UPDATE SET qty = {CATALOG_NAME}.qty + EXCLUDED.qty"""))
