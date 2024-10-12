@@ -64,7 +64,7 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     print(wholesale_catalog)
 
     target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
-    target_ratio = [0.3, 0.4, 0.3, 0.0]
+    target_ratio = [0.5, 0.0, 0.4, 0.1]
     deviation = 15
 
     with db.engine.begin() as connection:
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     Barrel(sku='MINI_GREEN_BARREL', ml_per_barrel=200, potion_type=[0, 1, 0, 0], price=60, quantity=1),
     Barrel(sku='MINI_BLUE_BARREL', ml_per_barrel=200, potion_type=[0, 0, 1, 0], price=60, quantity=1)]
 
-    # print(get_wholesale_purchase_plan(my_catalog))
+    print(get_wholesale_purchase_plan(my_catalog))
     # post_deliver_barrels(my_catalog, 420)
 
     # def projection(a, b):
