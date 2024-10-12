@@ -166,7 +166,7 @@ def checkout(cart_id: int, cart_checkout: CartCheckout):
         connection.execute(checkout_cart, {'cart_id': cart_id})
         connection.execute(take_payment, {'gold': cart_checkout.payment})
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
     # checkout(cart_id = 4, cart_checkout = CartCheckout(payment = 35))
     # set_item_quantity(cart_id = 4, item_sku = '000100000000', cart_item=CartItem(quantity = 5))
     # print(create_cart(Customer(customer_name='Mr. A', character_class='Someclass', level=420)))
