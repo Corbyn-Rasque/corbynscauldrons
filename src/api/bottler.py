@@ -22,31 +22,35 @@ class PotionInventory(BaseModel):
 #   COST_PER_VOL CALCULATION
 #   PRICE & LISTING STRATEGY
 
-
-CATALOG_NAME = 'catalog'
-CATALOG_COLUMNS = ('r', 'g', 'b', 'd', 'name', 'qty', 'price', 'cost_per_vol', 'listed')
-PRICE = 35
-COST_PER_VOL = 0
-LISTED = True
-
 @router.post("/deliver/{order_id}")
 def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int):
     """ """
     print(f"potions delievered: {potions_delivered} order_id: {order_id}")
 
+    potions = []
+    total_used = [0, 0, 0, 0]
+    for potion in potions_delivered:
+        potion_name = ''.join([str(num).zfill(3) for num in potion.potion_type])
+        potions.append(dict(zip(['r', 'g', 'b', 'd', 'name', 'qty', 'listed'], [*potion.potion_type, potion_name, potion.quantity, True])))
+        used = [color * potion.quantity for color in potion.potion_type]
+        total_used = list(map(sum, zip(total_used, used)))
+
+    total_used = dict(zip(['red_used', 'green_used', 'blue_used', 'dark_used'], total_used))
+
+    deliver          = text('''INSERT INTO catalog (r, g, b, d, name, qty, listed)
+                               VALUES (:r, :g, :b, :d, :name, :qty, :listed)
+                               ON CONFLICT (r, g, b, d)
+                               DO UPDATE SET qty = catalog.qty + EXCLUDED.qty, listed = TRUE''')
+    
+    adjust_inventory = text('''UPDATE global_inventory
+                               SET red = red - :red_used,
+                                   green = green - :green_used,
+                                   blue = blue - :blue_used,
+                                   dark = dark - :dark_used''')
+
     with db.engine.begin() as connection:
-
-        potions = []
-        for potion in potions_delivered:
-            potion_name = ''.join([str(num).zfill(3) for num in potion.potion_type])
-            potions.append(dict(zip(['r', 'g', 'b', 'd', 'name', 'qty', 'listed'], [*potion.potion_type, potion_name, potion.quantity, True])))
-
-        deliver = text('''INSERT INTO catalog (r, g, b, d, name, qty, listed)
-                          VALUES (:r, :g, :b, :d, :name, :qty, :listed)
-                          ON CONFLICT (r, g, b, d)
-                          DO UPDATE SET qty = catalog.qty + EXCLUDED.qty, listed = TRUE''')
-
         connection.execute(deliver, potions)
+        connection.execute(adjust_inventory, total_used)
     
     return "OK"
 
@@ -119,8 +123,9 @@ def get_bottle_plan():
                                    })
         return bottle_plan
 
-if __name__ == '__main__':
-    print(get_bottle_plan())
+# if __name__ == '__main__':
+    # print(get_bottle_plan())
+    # post_deliver_bottles([PotionInventory(potion_type = [0, 100, 0, 0], quantity = 5)], order_id = 22798)
 
 
 # potions = [PotionInventory(potion_type = [0, 100, 0, 0], quantity = 1)]
