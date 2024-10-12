@@ -2,12 +2,9 @@ from fastapi import APIRouter, Depends
 from enum import Enum
 from pydantic import BaseModel
 from src.api import auth
-import sqlalchemy
+from sqlalchemy import text
 from src import database as db
 import time
-
-CATALOG_NAME = 'catalog'
-CATALOG_COLUMNS = ('r', 'g', 'b', 'd', 'name', 'qty', 'price', 'cost_per_vol', 'listed')
 
 router = APIRouter(
     prefix="/bottler",
@@ -25,6 +22,9 @@ class PotionInventory(BaseModel):
 #   COST_PER_VOL CALCULATION
 #   PRICE & LISTING STRATEGY
 
+
+CATALOG_NAME = 'catalog'
+CATALOG_COLUMNS = ('r', 'g', 'b', 'd', 'name', 'qty', 'price', 'cost_per_vol', 'listed')
 PRICE = 35
 COST_PER_VOL = 0
 LISTED = True
@@ -36,18 +36,18 @@ def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int
 
     with db.engine.begin() as connection:
 
-        potions_to_insert = []
+        potions = []
         for potion in potions_delivered:
             potion_name = ''.join([str(num).zfill(3) for num in potion.potion_type])
+            potions.append(dict(zip(['r', 'g', 'b', 'd', 'name', 'qty', 'listed'], [*potion.potion_type, potion_name, potion.quantity, True])))
 
-            # CHANGE HARD CODED PRICE, COST_PER_VOL, AND LISTING BOOLEAN!
-            potion_tuple = (*potion.potion_type, potion_name, potion.quantity, PRICE, COST_PER_VOL, LISTED)
-            potions_to_insert.append(potion_tuple)
+        deliver = text('''INSERT INTO catalog (r, g, b, d, name, qty, listed)
+                          VALUES (:r, :g, :b, :d, :name, :qty, :listed)
+                          ON CONFLICT (r, g, b, d)
+                          DO UPDATE SET qty = catalog.qty + EXCLUDED.qty, listed = TRUE''')
 
-        connection.execute(sqlalchemy.text(f"""INSERT INTO {CATALOG_NAME} {CATALOG_COLUMNS}
-                                               VALUES {', '.join(str(potion) for potion in potions_to_insert)}
-                                               ON CONFLICT (r, g, b, d)
-                                               DO UPDATE SET qty = {CATALOG_NAME}.qty + EXCLUDED.qty"""))
+        connection.execute(deliver, potions)
+    
     return "OK"
 
 @router.post("/plan")
@@ -56,46 +56,43 @@ def get_bottle_plan():
     Go from barrel to bottle.
     """
 
-    return_keys = ['potion_type', 'quantity']
-
     #Strategy
     target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
-    target_ratio = [0.3, 0.3, 0.4, 0.0]
+    target_ratio = [1.0, 1.0, 1.0, 0.0]
     deviation = 15
 
     with db.engine.begin() as connection:
-        num_capacity, red, green, blue, dark = connection.execute(sqlalchemy.text("""SELECT num_capacity, red, green, blue, dark
-                                                                                     FROM global_inventory""")).first()
+        num_capacity, red, green, blue, dark = connection.execute(text("""SELECT num_capacity, red, green, blue, dark
+                                                                          FROM global_inventory""")).first()
         on_hand = [ red, green, blue, dark ]
 
-        total_potions = connection.execute(sqlalchemy.text("""SELECT sum(qty)
-                                                              FROM catalog""")).scalar()
+        total_potions = connection.execute(text("""SELECT sum(qty)
+                                                   FROM catalog""")).scalar()
 
         ratio_denominator = num_capacity - total_potions
 
         on_hand_matches = []
         for potion in target_potions:
-            temp_value = connection.execute(sqlalchemy.text(f"""WITH target_potion AS (SELECT *
-                                                                                       FROM (VALUES {potion})
-                                                                                       AS t(red, green, blue, dark)),
-                                                                    distance AS (
-                                                                             SELECT r, g, b, d, qty,
-                                                                                    SQRT(POWER(catalog.r - target_potion.red, 2) +
-                                                                                    POWER(catalog.g - target_potion.green, 2) +
-                                                                                    POWER(catalog.b - target_potion.blue, 2) +
-                                                                                    POWER(catalog.d - target_potion.dark, 2)
-                                                                                ) AS distance
-                                                                             FROM catalog, target_potion )
-                                                                SELECT r, g, b, d, qty, distance
-                                                                FROM distance
-                                                                WHERE distance <= {deviation} AND qty > 0
-                                                                ORDER BY distance ASC
-                                                                LIMIT {6 // len(target_potions)}""")).all()
+            temp_value = connection.execute(text(f"""WITH target_potion AS (SELECT *
+                                                                            FROM (VALUES {potion})
+                                                                            AS t(red, green, blue, dark)),
+                                                        distance AS (
+                                                                    SELECT r, g, b, d, qty,
+                                                                        SQRT(POWER(catalog.r - target_potion.red, 2) +
+                                                                        POWER(catalog.g - target_potion.green, 2) +
+                                                                        POWER(catalog.b - target_potion.blue, 2) +
+                                                                        POWER(catalog.d - target_potion.dark, 2)
+                                                                    ) AS distance
+                                                                    FROM catalog, target_potion )
+                                                    SELECT r, g, b, d, qty, distance
+                                                    FROM distance
+                                                    WHERE distance <= {deviation} AND qty > 0
+                                                    ORDER BY distance ASC
+                                                    LIMIT {6 // len(target_potions)}""")).all()
             for potion in temp_value:
                 ratio_denominator += potion[4]
 
             on_hand_matches.append(temp_value)
-
 
         # Creates dictionary using potion_type as id, and quantity to produce optimally as a value (according to ratios)
         # target_potion, match_list & target_ratio are all keyed in the same r, g, b, d order & can be iterated on simultaneously
