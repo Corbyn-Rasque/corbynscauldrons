@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from src.api import auth
 from enum import Enum
-import sqlalchemy
+# import sqlalchemy
+from sqlalchemy import text
+# from sqlalchemy import Table, Column, Integer, String, MetaData
+# from sqlalchemy.orm import  sessionmaker, scoped_session, declarative_base
 from src import database as db
 
 router = APIRouter(
@@ -68,28 +71,56 @@ def search_orders(
         ],
     }
 
-
 class Customer(BaseModel):
     customer_name: str
     character_class: str
     level: int
+
 
 @router.post("/visits/{visit_id}")
 def post_visits(visit_id: int, customers: list[Customer]):
     """
     Which customers visited the shop today?
     """
+
     print(visit_id, customers)
 
+    customer_group = []
+    visitors = []
+    for customer in customers:
+        customer_group.append(dict(zip(['name', 'class', 'level'], [*vars(customer).values()])))
+        visitors.append({'visit_id': visit_id, 'name': customer.customer_name})
+        
+    customer_insert = text('''INSERT INTO customers (name, class, level)
+                              VALUES (:name, :class, :level)
+                              ON CONFLICT DO NOTHING''')
+ 
+    visit_insert    = text('''INSERT INTO visits (visit_id, name)
+                              VALUES (:visit_id, :name)
+                              ON CONFLICT DO NOTHING''')
+
+    with db.engine.begin() as connection:
+        connection.execute(customer_insert, customer_group)
+        connection.execute(visit_insert, visitors)
+        
     return "OK"
 
 
 @router.post("/")
 def create_cart(new_cart: Customer):
     """ """
-    # print(new_cart)
+    print(new_cart)
 
-    return {"cart_id": 1}
+    customer = {'name': new_cart.customer_name}
+
+    create_cart_for = text('''INSERT INTO carts (name)
+                              VALUES (:name)
+                              RETURNING cart_id''')
+
+    with db.engine.begin() as connection:
+        cart_id = connection.execute(create_cart_for, customer).scalar()
+    
+    return {"cart_id": cart_id}
 
 
 class CartItem(BaseModel):
@@ -100,12 +131,17 @@ class CartItem(BaseModel):
 def set_item_quantity(cart_id: int, item_sku: str, cart_item: CartItem):
     """ """
 
-    # with db.engine.begin() as connection:
-    #     potions_available = connection.execute(sqlalchemy.text("SELECT num_green_potions FROM global_inventory"))
-    #     if item_sku == "GREEN_POTION_0" and cart_item.quantity <= potions_available:
-    #         return 
-
     print(cart_id, item_sku, cart_item)
+
+    put_in_cart = text('''INSERT INTO ledger (cart_id, r, g, b, d, ordered, price, sold)
+                          SELECT :cart_id, r, g, b, d, :ordered, price, LEAST(:ordered, qty)
+                          FROM catalog
+                          WHERE name = :sku''')
+
+    items = {'cart_id': cart_id, 'ordered': cart_item.quantity, 'sku': item_sku,}
+
+    with db.engine.begin() as connection:
+        connection.execute(put_in_cart, items)
 
     return "OK"
 
@@ -119,10 +155,19 @@ def checkout(cart_id: int, cart_checkout: CartCheckout):
 
     print(cart_id, cart_checkout)
 
-    with db.engine.begin() as connection:
-        potions_available = connection.execute(sqlalchemy.text("SELECT num_green_potinos FROM global_inventory"))
+    checkout_cart   = text('''UPDATE carts
+                              SET purchased = TRUE
+                              WHERE cart_id = :cart_id''')
 
-        if potions_available >= 1:
-            return {f"total_potions_bought": 1, "total_gold_paid": 35}
-        else:
-            return {f"total_potions_bought": 0, "total_gold_paid": 0}
+    take_payment    = text('''UPDATE global_inventory
+                              SET gold = gold + :gold''')
+
+    with db.engine.begin() as connection:
+        connection.execute(checkout_cart, {'cart_id': cart_id})
+        connection.execute(take_payment, {'gold': cart_checkout.payment})
+
+if __name__ == '__main__':
+    # checkout(cart_id = 4, cart_checkout = CartCheckout(payment = 35))
+    # set_item_quantity(cart_id = 4, item_sku = '000100000000', cart_item=CartItem(quantity = 5))
+    # print(create_cart(Customer(customer_name='Mr. A', character_class='Someclass', level=420)))
+    # post_visits(visit_id=42069, customers = [Customer(customer_name='Mr. A', character_class='Someclass', level=420), Customer(customer_name='Mr. T', character_class='Paladin', level=69)])
