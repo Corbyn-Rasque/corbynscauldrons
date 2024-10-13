@@ -178,8 +178,10 @@ def checkout(cart_id: int, cart_checkout: CartCheckout):
         connection.execute(catalog_update, potions)
         connection.execute(take_payment, {'gold': payment})
 
+    return {"total_potions_bought": sum(potion['sold'] for potion in potions), "total_gold_paid": payment}
+
 # if __name__ == '__main__':
-    # checkout(cart_id = 6, cart_checkout = CartCheckout(payment = 'gold card'))
+    # print(checkout(cart_id = 6, cart_checkout = CartCheckout(payment = 'gold card')))
     # set_item_quantity(cart_id = 4, item_sku = '000100000000', cart_item=CartItem(quantity = 5))
     # print(create_cart(Customer(customer_name='Mr. A', character_class='Someclass', level=420)))
     # post_visits(visit_id=42069, customers = [Customer(customer_name='Mr. A', character_class='Someclass', level=420), Customer(customer_name='Mr. T', character_class='Paladin', level=69)])
