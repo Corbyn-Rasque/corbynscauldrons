@@ -64,7 +64,7 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     print(wholesale_catalog)
 
     target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
-    target_ratio = [0.3, 0.3, 0.3, 0.1]
+    target_ratio = [0.601, 0.6, 0.0, 0.0]
     deviation = 15
 
     with db.engine.begin() as connection:
