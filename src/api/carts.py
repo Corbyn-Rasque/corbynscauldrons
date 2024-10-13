@@ -159,15 +159,27 @@ def checkout(cart_id: int, cart_checkout: CartCheckout):
                               SET purchased = TRUE
                               WHERE cart_id = :cart_id''')
 
+    order_info      = text('''SELECT price, sold, r, g, b, d
+                              FROM ledger
+                              WHERE cart_id = :cart_id''')
+
+    catalog_update  = text('''UPDATE catalog
+                              SET qty = qty - :sold
+                              WHERE (r, g, b, d) IN ((:r, :g, :b, :d))''')
+
     take_payment    = text('''UPDATE global_inventory
                               SET gold = gold + :gold''')
 
     with db.engine.begin() as connection:
         connection.execute(checkout_cart, {'cart_id': cart_id})
-        connection.execute(take_payment, {'gold': cart_checkout.payment})
+        payment = connection.execute(order_info, {'cart_id': cart_id}).all()
+        potions = [dict(zip(['sold', 'r', 'g', 'b', 'd'], potion[1:])) for potion in payment]
+        payment = sum(sold * price for price, sold, *_ in payment)
+        connection.execute(catalog_update, potions)
+        connection.execute(take_payment, {'gold': payment})
 
 # if __name__ == '__main__':
-    # checkout(cart_id = 4, cart_checkout = CartCheckout(payment = 35))
+    # checkout(cart_id = 6, cart_checkout = CartCheckout(payment = 'gold card'))
     # set_item_quantity(cart_id = 4, item_sku = '000100000000', cart_item=CartItem(quantity = 5))
     # print(create_cart(Customer(customer_name='Mr. A', character_class='Someclass', level=420)))
     # post_visits(visit_id=42069, customers = [Customer(customer_name='Mr. A', character_class='Someclass', level=420), Customer(customer_name='Mr. T', character_class='Paladin', level=69)])
