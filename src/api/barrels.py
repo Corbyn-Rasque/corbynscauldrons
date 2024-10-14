@@ -64,13 +64,13 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     print(wholesale_catalog)
 
     target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
-    target_ratio = [0.601, 0.6, 0.0, 0.0]
+    target_ratio = [0.31, 0.3, 3.0, 0.0]
     deviation = 15
 
     with db.engine.begin() as connection:
         gold, vol_capacity, red, green, blue, dark = connection.execute(sqlalchemy.text(f"""SELECT gold, vol_capacity, red, green, blue, dark
                                                                                             FROM global_inventory""")).first()
-    
+
     current_volumes = [red, green, blue, dark]
     potion_colors = ['RED', 'GREEN', 'BLUE', 'DARK']
     sizes = ['MINI', 'SMALL', 'MEDIUM', 'LARGE']
