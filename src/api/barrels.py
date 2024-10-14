@@ -129,7 +129,7 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
         for size in sizes:
             model += variables[(potion, size)] <= data[potion][size]['qty']  
     
-    model.solve()
+    model.solve(PULP_CBC_CMD(msg=0))
 
     purchase_plan = []
     if LpStatus[model.status] == 'Optimal':
