@@ -62,13 +62,16 @@ def get_bottle_plan():
 
     #Strategy
     target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
-    target_ratio = [1.0, 1.0, 1.0, 0.0]
+    target_ratio = [0.3, 0.3, 0.3, 0.0]
     deviation = 15
 
     with db.engine.begin() as connection:
         num_capacity, red, green, blue, dark = connection.execute(text("""SELECT num_capacity, red, green, blue, dark
                                                                           FROM global_inventory""")).first()
         on_hand = [ red, green, blue, dark ]
+
+        ### TEST
+        target_ratio = [color / sum(on_hand) for color in on_hand]
 
         total_potions = connection.execute(text("""SELECT sum(qty)
                                                    FROM catalog""")).scalar()
@@ -93,6 +96,7 @@ def get_bottle_plan():
                                                     WHERE distance <= {deviation} AND qty > 0
                                                     ORDER BY distance ASC
                                                     LIMIT {6 // len(target_potions)}""")).all()
+            
             for potion in temp_value:
                 ratio_denominator += potion[4]
 
@@ -103,6 +107,7 @@ def get_bottle_plan():
         final_order = {}
         for target_potion, match_list, ratio in zip(target_potions, on_hand_matches, target_ratio):
             final_order.update(dict.fromkeys([target_potion], int(ratio * ratio_denominator)))
+
             for potion in match_list:
                 final_order[target_potion] -= potion[4]
 
@@ -111,9 +116,10 @@ def get_bottle_plan():
             #   - determine the number of potions that can be produced, based on the color requirements and the above allotments
             #   - return the number of potions possible to produce, based on the limiting color calculated above across all colors
             #       - if else -> avoids division by zero & replaces overall value with max possible value
-            final_order[target_potion] = min([
-                int(color_allotment // color_vol_requirement) if color_vol_requirement else final_order[target_potion]
-                for color_vol_requirement, color_allotment in zip(target_potion, [color * ratio for color in on_hand])])
+
+            # final_order[target_potion] = min([
+            #     int(color_allotment // color_vol_requirement) if color_vol_requirement else final_order[target_potion]
+            #     for color_vol_requirement, color_allotment in zip(target_potion, [color * ratio for color in on_hand])])
 
         bottle_plan = []
         for potion_type, quantity in final_order.items():
@@ -121,10 +127,11 @@ def get_bottle_plan():
                 bottle_plan.append({ "potion_type": list(potion_type),  # [0, 100, 0, 0],
                                      "quantity": quantity               # Number of potions to create
                                    })
+        
         return bottle_plan
 
 # if __name__ == '__main__':
-    # print(get_bottle_plan())
+#     print(get_bottle_plan())
     # post_deliver_bottles([PotionInventory(potion_type = [0, 100, 0, 0], quantity = 5)], order_id = 22798)
 
 
