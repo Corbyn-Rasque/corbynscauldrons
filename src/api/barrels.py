@@ -35,9 +35,9 @@ def post_deliver_barrels(barrels_delivered: list[Barrel], order_id: int):
     """
     This function will record your barrel purchase to your database.
     """
-    # print(f"barrels delievered: {barrels_delivered} order_id: {order_id}")
+    print(f"barrels delievered: {barrels_delivered} order_id: {order_id}")
 
-    delivered = dict.fromkeys([color.name for color in BarrelType], 0)
+    # delivered = dict.fromkeys([color.name for color in BarrelType], 0)
 
     with db.engine.begin() as connection:
         gold, red, green, blue, dark = connection.execute(sqlalchemy.text(f"""SELECT gold, red, green, blue, dark
@@ -62,9 +62,7 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     """
     print(wholesale_catalog)
 
-    # target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
     target_ratio = [0.3, 0.301, 0.3, 0.0]
-    # deviation = 15
 
     with db.engine.begin() as connection:
         gold, vol_capacity, red, green, blue, dark = connection.execute(sqlalchemy.text(f"""SELECT gold, vol_capacity, red, green, blue, dark
@@ -86,8 +84,6 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
         data[color][size]['volume'] = barrel.ml_per_barrel
         data[color][size]['price'] = barrel.price
         data[color][size]['qty'] = barrel.quantity
-
-    print(barrel)
 
     targets = {}
     for color, target_volume in zip(potion_colors, [int(ratio * vol_capacity) for ratio in target_ratio]):
@@ -117,7 +113,10 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     model += lpSum(data[potion][size]['volume'] * variables[(potion, size)] for potion in potion_colors for size in sizes)
 
     # Volume Constraint: functionality may be broken CHECK!
-    model += lpSum(data[potion][size]['volume'] * variables[(potion, size)] for potion in potion_colors for size in sizes) >= volume_required[potion]
+    tolerance = 0.95
+    for potion in potion_colors:
+        model += lpSum(data[potion][size]['volume'] * variables[(potion, size)] for size in sizes) >= (1 - tolerance) * volume_required[potion]
+        model += lpSum(data[potion][size]['volume'] * variables[(potion, size)] for size in sizes) <= (1 + tolerance) * volume_required[potion]
 
     # Inventory Constraint
     model += lpSum(data[potion][size]['volume'] * variables[(potion, size)] for potion in potion_colors for size in sizes) <= remaining_space
