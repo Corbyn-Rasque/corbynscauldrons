@@ -4,7 +4,6 @@ from src.api import auth
 import sqlalchemy
 from src import database as db
 from enum import Enum
-from math import sqrt, pow
 from pulp import LpMinimize, LpMaximize, LpProblem, LpStatus, lpSum, LpVariable
 
 class BarrelType(Enum):
@@ -63,9 +62,9 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     """
     print(wholesale_catalog)
 
-    target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
-    target_ratio = [0.31, 0.3, 3.0, 0.0]
-    deviation = 15
+    # target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
+    target_ratio = [0.3, 0.301, 0.3, 0.0]
+    # deviation = 15
 
     with db.engine.begin() as connection:
         gold, vol_capacity, red, green, blue, dark = connection.execute(sqlalchemy.text(f"""SELECT gold, vol_capacity, red, green, blue, dark
@@ -87,6 +86,8 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
         data[color][size]['volume'] = barrel.ml_per_barrel
         data[color][size]['price'] = barrel.price
         data[color][size]['qty'] = barrel.quantity
+
+    print(barrel)
 
     targets = {}
     for color, target_volume in zip(potion_colors, [int(ratio * vol_capacity) for ratio in target_ratio]):
@@ -161,6 +162,7 @@ if __name__ == "__main__":
     Barrel(sku='MINI_BLUE_BARREL', ml_per_barrel=200, potion_type=[0, 0, 1, 0], price=60, quantity=1)]
 
     print(get_wholesale_purchase_plan(my_catalog))
+
     # post_deliver_barrels(my_catalog, 420)
 
     # def projection(a, b):

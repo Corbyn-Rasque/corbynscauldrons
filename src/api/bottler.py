@@ -19,7 +19,6 @@ class PotionInventory(BaseModel):
 
 # TO IMPLEMENT:
 #   STORING ORDER_ID & DELIVERY INFO IN BOTTLE DELIVERY WAREHOUSE
-#   COST_PER_VOL CALCULATION
 #   PRICE & LISTING STRATEGY
 
 @router.post("/deliver/{order_id}")
@@ -54,29 +53,32 @@ def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int
     
     return "OK"
 
-@router.post("/plan")
 def get_bottle_plan():
     """
     Go from barrel to bottle.
     """
 
-    #Strategy
-    target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0), (0, 0, 0, 100)]
-    target_ratio = [0.3, 0.3, 0.3, 0.0]
-    deviation = 15
-
+    date = {'day': 1}
     with db.engine.begin() as connection:
         num_capacity, red, green, blue, dark = connection.execute(text("""SELECT num_capacity, red, green, blue, dark
                                                                           FROM global_inventory""")).first()
         on_hand = [ red, green, blue, dark ]
 
-        ### TEST
-        target_ratio = [color / sum(on_hand) for color in on_hand]
-
         total_potions = connection.execute(text("""SELECT sum(qty)
                                                    FROM catalog""")).scalar()
 
         ratio_denominator = num_capacity - total_potions
+
+        target_potions = connection.execute(text("""SELECT r, g, b, d
+                                                    FROM strategy_potions
+                                                    WHERE day = :day"""), date).all()
+
+        target_ratio = connection.execute(text("""SELECT red_ratio, green_ratio, blue_ratio, dark_ratio, deviation
+                                                  FROM strategy
+                                                  WHERE day = :day"""), date).first()
+
+        deviation = target_ratio[-1]
+        target_ratio = target_ratio[:-1]
 
         on_hand_matches = []
         for potion in target_potions:
@@ -96,7 +98,6 @@ def get_bottle_plan():
                                                     WHERE distance <= {deviation} AND qty > 0
                                                     ORDER BY distance ASC
                                                     LIMIT {6 // len(target_potions)}""")).all()
-            
             for potion in temp_value:
                 ratio_denominator += potion[4]
 
@@ -107,7 +108,6 @@ def get_bottle_plan():
         final_order = {}
         for target_potion, match_list, ratio in zip(target_potions, on_hand_matches, target_ratio):
             final_order.update(dict.fromkeys([target_potion], int(ratio * ratio_denominator)))
-
             for potion in match_list:
                 final_order[target_potion] -= potion[4]
 
@@ -116,10 +116,9 @@ def get_bottle_plan():
             #   - determine the number of potions that can be produced, based on the color requirements and the above allotments
             #   - return the number of potions possible to produce, based on the limiting color calculated above across all colors
             #       - if else -> avoids division by zero & replaces overall value with max possible value
-
-            # final_order[target_potion] = min([
-            #     int(color_allotment // color_vol_requirement) if color_vol_requirement else final_order[target_potion]
-            #     for color_vol_requirement, color_allotment in zip(target_potion, [color * ratio for color in on_hand])])
+            final_order[target_potion] = min([
+                int(color_allotment // color_vol_requirement) if color_vol_requirement else final_order[target_potion]
+                for color_vol_requirement, color_allotment in zip(target_potion, [color * ratio for color in on_hand])])
 
         bottle_plan = []
         for potion_type, quantity in final_order.items():
@@ -127,23 +126,86 @@ def get_bottle_plan():
                 bottle_plan.append({ "potion_type": list(potion_type),  # [0, 100, 0, 0],
                                      "quantity": quantity               # Number of potions to create
                                    })
-        
         return bottle_plan
 
 # if __name__ == '__main__':
-#     print(get_bottle_plan())
+    # start_time = time.time()
+    # print(get_bottle_plan())
+    # print("--- %0.6s seconds ---" % (time.time() - start_time))
     # post_deliver_bottles([PotionInventory(potion_type = [0, 100, 0, 0], quantity = 5)], order_id = 22798)
 
 
 # potions = [PotionInventory(potion_type = [0, 100, 0, 0], quantity = 1)]
 # [PotionInventory(potion_type=[0, 100, 0, 0], quantity=5)] order_id: 22798
 
-#Creates a diction of potion names and values, so the largest value can be used to name the potion and create a SKU.
-            # potion_type_dict = dict(zip(['red', 'green', 'blue', 'dark'], potion.potion_type))
-            # predominant_potion = max(potion_type_dict, key = potion_type_dict.get)
-
-
-# post_deliver_bottles([PotionInventory(potion_type=[0, 100, 0, 0], quantity=6),PotionInventory(potion_type=[1, 0, 50, 49], quantity=5)], 22798)
-
 # start_time = time.time()
 # print("--- %0.6s seconds ---" % (time.time() - start_time))
+
+# @router.post("/plan")
+# def get_bottle_plan():
+#     """
+#     Go from barrel to bottle.
+#     """
+
+#     #Strategy
+#     target_potions = [(34, 33, 33, 0), (100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 0, 100)]
+#     target_ratio = [0.34, 0.33, 0.33, 0.0]
+#     deviation = 15
+
+#     with db.engine.begin() as connection:
+#         num_capacity, red, green, blue, dark = connection.execute(text("""SELECT num_capacity, red, green, blue, dark
+#                                                                           FROM global_inventory""")).first()
+#         on_hand = [ red, green, blue, dark ]
+
+#         ### TEST
+#         target_ratio = [target_ratio_color * (on_hand_color / sum(on_hand)) for on_hand_color, target_ratio_color in zip(on_hand, target_ratio)]
+
+#         total_potions = connection.execute(text("""SELECT sum(qty)
+#                                                    FROM catalog""")).scalar()
+
+#         capacity_available = num_capacity - total_potions
+
+#         on_hand_matches = []
+#         for potion in target_potions:
+#             on_hand_matches.append(connection.execute(text(f"""WITH target_potion AS (SELECT *
+#                                                                                       FROM (VALUES {potion})
+#                                                                                       AS t(red, green, blue, dark)),
+#                                                                     distance AS (SELECT r, g, b, d, qty, price,
+#                                                                                  SQRT(POWER(catalog.r - target_potion.red, 2) +
+#                                                                                  POWER(catalog.g - target_potion.green, 2) +
+#                                                                                  POWER(catalog.b - target_potion.blue, 2) +
+#                                                                                  POWER(catalog.d - target_potion.dark, 2)) AS distance
+#                                                                                  FROM catalog, target_potion )
+#                                                                SELECT r, g, b, d, qty, price
+#                                                                FROM distance
+#                                                                WHERE distance <= {deviation} AND qty > 0
+#                                                                ORDER BY distance ASC
+#                                                                LIMIT {6 // len(target_potions)}""")).all())
+        
+#         final_on_hand_matches = []
+#         for match in on_hand_matches:
+#             for item in match:
+#                 if item not in final_on_hand_matches:
+#                     final_on_hand_matches.append(item)
+#                     # num_capacity -= item[4]
+
+#         # Creates dictionary using potion_type as id, and quantity to produce optimally as a value (according to ratios)
+#         # target_potion, match_list & target_ratio are all keyed in the same r, g, b, d order & can be iterated on simultaneously
+#         final_order = {}
+#         for target_potion, match_list, ratio in zip(target_potions, final_on_hand_matches, target_ratio):
+
+#             final_order.update(dict.fromkeys([target_potion], int(ratio * capacity_available)))
+
+#             print(final_order)
+
+#             # for potion in match_list:
+#             #     final_order[target_potion] -= potion[4]
+
+#         bottle_plan = []
+#         for potion_type, quantity in final_order.items():
+#             if quantity != 0:
+#                 bottle_plan.append({ "potion_type": list(potion_type),  # [0, 100, 0, 0],
+#                                      "quantity": quantity               # Number of potions to create
+#                                    })
+        
+#         return bottle_plan

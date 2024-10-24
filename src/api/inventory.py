@@ -72,27 +72,3 @@ def deliver_capacity_plan(capacity_purchase : CapacityPurchase, order_id: int):
                                               SET num_capacity = {num_capacity}, vol_capacity = {vol_capacity}"""))
 
     return "OK"
-
-# For testing inventory
-# print(get_inventory())
-
-# deliver_capacity_plan(capacity_purchase = CapacityPurchase(potion_capacity = 1, ml_capacity = 1), order_id = 1)
-
-
-# ADDS COLUMNS TO STRATEGY
-
-# with db.engine.begin() as connection:
-#     week = connection.execute(sqlalchemy.text("""SELECT * FROM strategy""")).all()
-
-#     new_list = []
-
-#     for day in week:
-#         temp_list = []
-
-#         for i in range(1, 25, 2):
-#             temp_list = list(day)
-#             temp_list[-1] = i
-#             new_list.append(temp_list)
-
-#     connection.execute(sqlalchemy.text(f"""INSERT INTO strategy (day, red_ratio, green_ratio, blue_ratio, dark_ratio, day_name, hour)
-#                                            VALUES {', '.join(map(str, tuple(map(tuple, new_list))))}"""))

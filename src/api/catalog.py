@@ -60,18 +60,3 @@ def get_catalog():
 
 if __name__ == '__main__':
      print(get_catalog())
-
-# with db.engine.begin() as connection:
-#     catalog = [*connection.execute(sqlalchemy.text(f"""SELECT name, qty, price, r, g, b, d
-#                                                        FROM catalog
-#                                                        WHERE listed = TRUE""")).mappings().all()]
-
-# [
-#                 {
-#                     "sku": "GREEN_POTION_0",
-#                     "name": "green potion",
-#                     "quantity": 1,
-#                     "price": 35,
-#                     "potion_type": [0, 100, 0, 0],
-#                 }
-#             ]
