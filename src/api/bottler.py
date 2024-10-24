@@ -53,6 +53,7 @@ def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int
     
     return "OK"
 
+@router.post("/plan")
 def get_bottle_plan():
     """
     Go from barrel to bottle.

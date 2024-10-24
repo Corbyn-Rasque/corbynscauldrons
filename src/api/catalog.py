@@ -25,8 +25,8 @@ def get_catalog():
 
         for potion in target_potions:
             best_matches.append(connection.execute(text(f"""WITH target_potion AS (SELECT *
-                                                                                              FROM (VALUES {potion})
-                                                                                              AS t(red, green, blue, dark)),
+                                                                                   FROM (VALUES {potion})
+                                                                                   AS t(red, green, blue, dark)),
                                                                             distance AS (
                                                                                      SELECT r, g, b, d, qty, price,
                                                                                             SQRT(POWER(catalog.r - target_potion.red, 2) +
