@@ -65,8 +65,8 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     target_ratio = [0.3, 0.301, 0.3, 0.0]
 
     with db.engine.begin() as connection:
-        gold, vol_capacity, red, green, blue, dark = connection.execute(sqlalchemy.text(f"""SELECT gold, vol_capacity, red, green, blue, dark
-                                                                                            FROM global_inventory""")).first()
+        gold, vol_capacity, red, green, blue, dark, tolerance = connection.execute(sqlalchemy.text(f"""SELECT gold, vol_capacity, red, green, blue, dark, purchase_tolerance
+                                                                                                       FROM global_inventory""")).first()
 
     current_volumes = [red, green, blue, dark]
     potion_colors = ['RED', 'GREEN', 'BLUE', 'DARK']
@@ -113,7 +113,7 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     model += lpSum(data[potion][size]['volume'] * variables[(potion, size)] for potion in potion_colors for size in sizes)
 
     # Volume Constraint: functionality may be broken CHECK!
-    tolerance = 0.95
+    # tolerance = 1
     for potion in potion_colors:
         model += lpSum(data[potion][size]['volume'] * variables[(potion, size)] for size in sizes) >= (1 - tolerance) * volume_required[potion]
         model += lpSum(data[potion][size]['volume'] * variables[(potion, size)] for size in sizes) <= (1 + tolerance) * volume_required[potion]
