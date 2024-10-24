@@ -1,23 +1,30 @@
 from fastapi import APIRouter
 import sqlalchemy
+from sqlalchemy import text
 from src import database as db
 
 router = APIRouter()
-
 
 @router.get("/catalog/", tags=["catalog"])
 def get_catalog():
     """
     Each unique item combination must have only a single price.
     """
-    # Strategy
-    target_potions = [(100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 100, 0)]
-    deviation = 15
 
+    date = {'day': int}
     best_matches = []
     with db.engine.begin() as connection:
+
+        date['day'], deviation = connection.execute(text("""SELECT day, deviation
+                                                            FROM strategy
+                                                            WHERE is_today = TRUE""")).first()
+
+        target_potions = connection.execute(text("""SELECT r, g, b, d
+                                                    FROM strategy_potions
+                                                    WHERE day = :day"""), date).all()
+
         for potion in target_potions:
-            best_matches.append(connection.execute(sqlalchemy.text(f"""WITH target_potion AS (SELECT *
+            best_matches.append(connection.execute(text(f"""WITH target_potion AS (SELECT *
                                                                                               FROM (VALUES {potion})
                                                                                               AS t(red, green, blue, dark)),
                                                                             distance AS (
@@ -40,7 +47,7 @@ def get_catalog():
                     toggle_listed.append(potion[:4])
 
         if toggle_listed:
-            connection.execute(sqlalchemy.text(f"""UPDATE catalog
+            connection.execute(text(f"""UPDATE catalog
                                                 SET listed = CASE
                                                         WHEN (r, g, b, d) IN (VALUES {', '.join(str(potion) for potion in toggle_listed)}) THEN TRUE
                                                         ELSE FALSE

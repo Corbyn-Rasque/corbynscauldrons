@@ -57,8 +57,8 @@ def get_bottle_plan():
     """
     Go from barrel to bottle.
     """
+    date = {'day': int}
 
-    date = {'day': 1}
     with db.engine.begin() as connection:
         num_capacity, red, green, blue, dark = connection.execute(text("""SELECT num_capacity, red, green, blue, dark
                                                                           FROM global_inventory""")).first()
@@ -69,17 +69,15 @@ def get_bottle_plan():
 
         ratio_denominator = num_capacity - total_potions
 
+        date['day'], *target_ratio, deviation = connection.execute(text("""SELECT day_name, red_ratio, green_ratio, blue_ratio, dark_ratio, deviation
+                                                                           FROM strategy
+                                                                           WHERE is_today = TRUE""")).first()
+
         target_potions = connection.execute(text("""SELECT r, g, b, d
                                                     FROM strategy_potions
-                                                    WHERE day = :day"""), date).all()
-
-        target_ratio = connection.execute(text("""SELECT red_ratio, green_ratio, blue_ratio, dark_ratio, deviation
-                                                  FROM strategy
-                                                  WHERE day = :day"""), date).first()
-
-        deviation = target_ratio[-1]
-        target_ratio = target_ratio[:-1]
-
+                                                    INNER JOIN strategy ON strategy.day = strategy_potions.day
+                                                    WHERE day_name = :day"""), date).all()
+    
         on_hand_matches = []
         for potion in target_potions:
             temp_value = connection.execute(text(f"""WITH target_potion AS (SELECT *
@@ -128,9 +126,9 @@ def get_bottle_plan():
                                    })
         return bottle_plan
 
-# if __name__ == '__main__':
+if __name__ == '__main__':
     # start_time = time.time()
-    # print(get_bottle_plan())
+    print(get_bottle_plan())
     # print("--- %0.6s seconds ---" % (time.time() - start_time))
     # post_deliver_bottles([PotionInventory(potion_type = [0, 100, 0, 0], quantity = 5)], order_id = 22798)
 
