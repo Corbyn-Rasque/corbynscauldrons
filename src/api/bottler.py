@@ -90,12 +90,12 @@ def get_bottle_plan():
                                                                         POWER(catalog.g - target_potion.green, 2) +
                                                                         POWER(catalog.b - target_potion.blue, 2) +
                                                                         POWER(catalog.d - target_potion.dark, 2)
-                                                                    ) AS distance
+                                                                    ) AS distancet
                                                                     FROM catalog, target_potion )
                                                     SELECT r, g, b, d, qty, distance
                                                     FROM distance
-                                                    WHERE distance <= {deviation} AND qty > 0
-                                                    ORDER BY distance ASC
+                                                    WHERE distancet <= {deviation} AND qty > 0
+                                                    ORDER BY distancet ASC
                                                     LIMIT {6 // len(target_potions)}""")).all()
             for potion in temp_value:
                 ratio_denominator += potion[4]
@@ -123,8 +123,8 @@ def get_bottle_plan():
         for potion_type, quantity in final_order.items():
             if quantity != 0:
                 bottle_plan.append({ "potion_type": list(potion_type),  # [0, 100, 0, 0],
-                                     "quantity": quantity               # Number of potions to create
-                                   })
+                                        "quantity": quantity               # Number of potions to create
+                                    })
         return bottle_plan
 
 if __name__ == '__main__':

@@ -62,7 +62,7 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
     """
     print(wholesale_catalog)
 
-    target_ratio = [0.3, 0.301, 0.3, 0.0]
+    target_ratio = [0.3, 0.3, 0.3, 0.0]
 
     with db.engine.begin() as connection:
         gold, vol_capacity, red, green, blue, dark, tolerance = connection.execute(sqlalchemy.text(f"""SELECT gold, vol_capacity, red, green, blue, dark, purchase_tolerance
