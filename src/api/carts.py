@@ -54,7 +54,7 @@ def search_orders(
                             GROUP BY customers.id, catalog.name, potion_ledger.ledger_id
                             HAVING customers.name ILIKE :customer_name OR catalog.name ILIKE :potion_sku
                             ORDER BY {sort_col.value} {sort_order.upper()}
-                            LIMIT 5 OFFSET :search_page * 5''')
+                            LIMIT 5 OFFSET COALESCE(:search_page, 0) * 5''')
 
     with db.engine.begin() as connection:
         results = connection.execute(search_query, dict(locals())).mappings().all()
