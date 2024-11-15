@@ -25,7 +25,7 @@ class search_sort_order(str, Enum):
 def search_orders(
     customer_name: str = "",
     potion_sku: str = "",
-    search_page: str = "",
+    search_page: str = 0,
     sort_col: search_sort_options = search_sort_options.timestamp,
     sort_order: search_sort_order = search_sort_order.desc,
 ):
@@ -36,6 +36,9 @@ def search_orders(
 
     customer_name = '%' + customer_name + '%'
     potion_sku    = '%' + potion_sku    + '%'
+    # search_page   = bool(search_page) if not search_page else search_page
+
+
 
     search_query = text(f'''SELECT customers.id AS line_item_id,
                                    customers.name AS customer_name,
@@ -54,19 +57,17 @@ def search_orders(
                             GROUP BY customers.id, catalog.name, potion_ledger.ledger_id
                             HAVING customers.name ILIKE :customer_name OR catalog.name ILIKE :potion_sku
                             ORDER BY {sort_col.value} {sort_order.upper()}
-                            LIMIT 5 OFFSET COALESCE(:search_page, 0) * 5''')
+                            LIMIT 5 OFFSET :search_page * 5''')
 
     with db.engine.begin() as connection:
         results = connection.execute(search_query, dict(locals())).mappings().all()
 
     return {
-        "previous": search_page > 0,
-        "next": (( len(results) // 5 ) - search_page ) > 0,
+        "previous": bool(search_page),
+        "next": (( len(results) // 5 ) - bool(search_page) ) > 0,
         "results": results
     }
 
-
-print(search_orders(customer_name='shadow', potion_sku='1', search_page=0, sort_col= search_sort_options.customer_name, sort_order=search_sort_order.desc))
 
 class Customer(BaseModel):
     customer_name: str
