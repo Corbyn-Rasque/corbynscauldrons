@@ -2,10 +2,7 @@ from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from src.api import auth
 from enum import Enum
-# import sqlalchemy
 from sqlalchemy import text
-# from sqlalchemy import Table, Column, Integer, String, MetaData
-# from sqlalchemy.orm import  sessionmaker, scoped_session, declarative_base
 from src import database as db
 
 router = APIRouter(
@@ -32,44 +29,44 @@ def search_orders(
     sort_col: search_sort_options = search_sort_options.timestamp,
     sort_order: search_sort_order = search_sort_order.desc,
 ):
-    """
-    Search for cart line items by customer name and/or potion sku.
+    '''
+    The search function searches orders by name & sku (all results in both are none),
+    with pagination and timestamp ordering.
+    '''
 
-    Customer name and potion sku filter to orders that contain the 
-    string (case insensitive). If the filters aren't provided, no
-    filtering occurs on the respective search term.
+    customer_name = '%' + customer_name + '%'
+    potion_sku    = '%' + potion_sku    + '%'
 
-    Search page is a cursor for pagination. The response to this
-    search endpoint will return previous or next if there is a
-    previous or next page of results available. The token passed
-    in that search response can be passed in the next search request
-    as search page to get that page of results.
+    search_query = text(f'''SELECT customers.id AS line_item_id,
+                                   customers.name AS customer_name,
+                                   catalog.name AS item_sku,
+                                   COALESCE(SUM(-potion_ledger.qty * potion_ledger_carts.price), 0)::INT AS line_item_total,
+                                   potion_ledger.timestamp AS timestamp,
+                                   COUNT(potion_ledger.ledger_id) AS row_count
+                            FROM potion_ledger
+                            JOIN catalog ON (catalog.r, catalog.g, catalog.b, catalog.d) IN ((potion_ledger.red,
+                                                                                            potion_ledger.green,
+                                                                                            potion_ledger.blue,
+                                                                                            potion_ledger.dark))
+                            JOIN potion_ledger_carts ON potion_ledger_carts.potion_ledger_id = potion_ledger.ledger_id
+                            JOIN carts ON carts.cart_id = potion_ledger_carts.cart_id
+                            JOIN customers ON customers.id = carts.customer_id
+                            GROUP BY customers.id, catalog.name, potion_ledger.ledger_id
+                            HAVING customers.name ILIKE :customer_name OR catalog.name ILIKE :potion_sku
+                            ORDER BY {sort_col.value} {sort_order.upper()}
+                            LIMIT 5 OFFSET :search_page * 5''')
 
-    Sort col is which column to sort by and sort order is the direction
-    of the search. They default to searching by timestamp of the order
-    in descending order.
-
-    The response itself contains a previous and next page token (if
-    such pages exist) and the results as an array of line items. Each
-    line item contains the line item id (must be unique), item sku, 
-    customer name, line item total (in gold), and timestamp of the order.
-    Your results must be paginated, the max results you can return at any
-    time is 5 total line items.
-    """
+    with db.engine.begin() as connection:
+        results = connection.execute(search_query, dict(locals())).mappings().all()
 
     return {
-        "previous": "",
-        "next": "",
-        "results": [
-            {
-                "line_item_id": 1,
-                "item_sku": "1 oblivion potion",
-                "customer_name": "Scaramouche",
-                "line_item_total": 50,
-                "timestamp": "2021-01-01T00:00:00Z",
-            }
-        ],
+        "previous": search_page > 0,
+        "next": (( len(results) // 5 ) - search_page ) > 0,
+        "results": results
     }
+
+
+print(search_orders(customer_name='shadow', potion_sku='1', search_page=0, sort_col= search_sort_options.customer_name, sort_order=search_sort_order.desc))
 
 class Customer(BaseModel):
     customer_name: str
@@ -79,48 +76,46 @@ class Customer(BaseModel):
 
 @router.post("/visits/{visit_id}")
 def post_visits(visit_id: int, customers: list[Customer]):
-    """
-    Which customers visited the shop today?
-    """
+    '''
+    Inserts customers & records customer visits.
+    '''
 
     print(visit_id, customers)
 
     customer_group = []
-    visitors = []
     for customer in customers:
-        customer_group.append(dict(zip(['name', 'class', 'level'], [*vars(customer).values()])))
-        visitors.append({'visit_id': visit_id, 'name': customer.customer_name})
-        
-    customer_insert = text('''INSERT INTO customers (name, class, level)
-                              VALUES (:name, :class, :level)
-                              ON CONFLICT DO NOTHING''')
- 
-    visit_insert    = text('''INSERT INTO visits (visit_id, name)
-                              VALUES (:visit_id, :name)
-                              ON CONFLICT DO NOTHING''')
+        customer_group.append(dict(zip(['name', 'class', 'level'], [*vars(customer).values()])) | {"visit_id": visit_id})
+
+    visit_insert =  text('''WITH customer AS (INSERT INTO customers (name, class, level)
+                                              VALUES (:name, :class, :level)
+                                              ON CONFLICT DO NOTHING
+                                              RETURNING id)
+                            INSERT INTO visits (visit_id, customer_id)
+                            VALUES (:visit_id, (SELECT id FROM customer))''')
 
     with db.engine.begin() as connection:
-        connection.execute(customer_insert, customer_group)
-        connection.execute(visit_insert, visitors)
+        connection.execute(visit_insert, customer_group)
         
     return "OK"
 
 
 @router.post("/")
-def create_cart(new_cart: Customer):
-    """ """
-    print(new_cart)
+def create_cart(customer: Customer):
+    '''
+    Inserts a new cart into carts.
+    '''
+    print(customer)
 
-    customer = {'name': new_cart.customer_name}
-
-    create_cart_for = text('''INSERT INTO carts (name)
-                              VALUES (:name)
-                              RETURNING cart_id''')
+    create_cart_for =   text('''INSERT INTO carts (customer_id)
+                                SELECT id
+                                FROM customers
+                                WHERE (name, class, level) IN ((:customer_name, :character_class, :level))
+                                RETURNING cart_id''')
 
     with db.engine.begin() as connection:
-        cart_id = connection.execute(create_cart_for, customer).scalar()
+        cart_id = connection.execute(create_cart_for, dict(customer)).mappings().one()
     
-    return {"cart_id": cart_id}
+    return cart_id
 
 
 class CartItem(BaseModel):
@@ -129,16 +124,22 @@ class CartItem(BaseModel):
 
 @router.post("/{cart_id}/items/{item_sku}")
 def set_item_quantity(cart_id: int, item_sku: str, cart_item: CartItem):
-    """ """
+    '''
+    Inserts new transaction into potion_ledger and creates cart connection.
+    '''
 
     print(cart_id, item_sku, cart_item)
 
-    put_in_cart = text('''INSERT INTO ledger (cart_id, r, g, b, d, ordered, price, sold)
-                          SELECT :cart_id, r, g, b, d, :ordered, price, LEAST(:ordered, qty)
-                          FROM catalog
-                          WHERE name = :sku''')
+    put_in_cart =   text('''WITH new_ledger AS (INSERT INTO potion_ledger (red, green, blue, dark, qty)
+                                                SELECT r, g, b, d, -:quantity
+                                                FROM catalog
+                                                WHERE name = :sku
+                                                RETURNING ledger_id, (SELECT price FROM catalog WHERE name = :sku))
+                            INSERT INTO potion_ledger_carts (cart_id, potion_ledger_id, price)
+                            SELECT :cart_id, ledger_id, price
+                            FROM new_ledger''')
 
-    items = {'cart_id': cart_id, 'ordered': cart_item.quantity, 'sku': item_sku,}
+    items = {'cart_id': cart_id, 'sku': item_sku,} | dict(cart_item)
 
     with db.engine.begin() as connection:
         connection.execute(put_in_cart, items)
@@ -149,39 +150,23 @@ def set_item_quantity(cart_id: int, item_sku: str, cart_item: CartItem):
 class CartCheckout(BaseModel):
     payment: str
 
+
 @router.post("/{cart_id}/checkout")
 def checkout(cart_id: int, cart_checkout: CartCheckout):
-    """ """
+    '''
+    Returns total potions sold & gold paid.
+    '''
 
     print(cart_id, cart_checkout)
 
-    checkout_cart   = text('''UPDATE carts
-                              SET purchased = TRUE
-                              WHERE cart_id = :cart_id''')
-
-    order_info      = text('''SELECT price, sold, r, g, b, d
-                              FROM ledger
-                              WHERE cart_id = :cart_id''')
-
-    catalog_update  = text('''UPDATE catalog
-                              SET qty = qty - :sold
-                              WHERE (r, g, b, d) IN ((:r, :g, :b, :d))''')
-
-    take_payment    = text('''UPDATE global_inventory
-                              SET gold = gold + :gold''')
+    checkout_shopping_cart =    text('''SELECT -COALESCE(SUM(potion_ledger.qty), 0)::INT AS total_potions_bought,
+                                               -COALESCE(SUM(potion_ledger.qty * potion_ledger_carts.price), 0)::INT AS total_gold_paid
+                                        FROM potion_ledger_carts
+                                        LEFT OUTER JOIN potion_ledger ON potion_ledger.ledger_id = potion_ledger_carts.potion_ledger_id
+                                        GROUP BY potion_ledger_carts.cart_id
+                                        HAVING potion_ledger_carts.cart_id = :cart_id''')
 
     with db.engine.begin() as connection:
-        connection.execute(checkout_cart, {'cart_id': cart_id})
-        payment = connection.execute(order_info, {'cart_id': cart_id}).all()
-        potions = [dict(zip(['sold', 'r', 'g', 'b', 'd'], potion[1:])) for potion in payment]
-        payment = sum(sold * price for price, sold, *_ in payment)
-        connection.execute(catalog_update, potions)
-        connection.execute(take_payment, {'gold': payment})
+        transaction_total = connection.execute(checkout_shopping_cart, {"cart_id": cart_id}).mappings().one()
 
-    return {"total_potions_bought": sum(potion['sold'] for potion in potions), "total_gold_paid": payment}
-
-# if __name__ == '__main__':
-    # print(checkout(cart_id = 6, cart_checkout = CartCheckout(payment = 'gold card')))
-    # set_item_quantity(cart_id = 4, item_sku = '000100000000', cart_item=CartItem(quantity = 5))
-    # print(create_cart(Customer(customer_name='Mr. A', character_class='Someclass', level=420)))
-    # post_visits(visit_id=42069, customers = [Customer(customer_name='Mr. A', character_class='Someclass', level=420), Customer(customer_name='Mr. T', character_class='Paladin', level=69)])
+    return dict(transaction_total)

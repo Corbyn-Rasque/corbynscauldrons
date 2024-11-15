@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from src.api import auth
 import sqlalchemy
+from sqlalchemy import text
 from src import database as db
 from enum import Enum
 from pulp import LpMinimize, LpMaximize, LpProblem, LpStatus, lpSum, LpVariable
@@ -37,22 +38,25 @@ def post_deliver_barrels(barrels_delivered: list[Barrel], order_id: int):
     """
     print(f"barrels delievered: {barrels_delivered} order_id: {order_id}")
 
-    # delivered = dict.fromkeys([color.name for color in BarrelType], 0)
+    barrels_delivered = [dict(barrel) | {"order_id": order_id} for barrel in barrels_delivered]
+
+    post_delivery = text('''WITH delivery AS (
+                                INSERT INTO barrel_purchase (order_id, size, quantity, cost)
+                                VALUES (:order_id, :ml_per_barrel, :quantity, :price)
+                                RETURNING id
+                            )
+                            INSERT INTO barrel_ledger (barrel_id, red, green, blue, dark)
+                            SELECT id, (:ml_per_barrel * :quantity) * (:potion_type)[1],
+                                       (:ml_per_barrel * :quantity) * (:potion_type)[2],
+                                       (:ml_per_barrel * :quantity) * (:potion_type)[3],
+                                       (:ml_per_barrel * :quantity) * (:potion_type)[4]
+                            FROM delivery''')
 
     with db.engine.begin() as connection:
-        gold, red, green, blue, dark = connection.execute(sqlalchemy.text(f"""SELECT gold, red, green, blue, dark
-                                                                              FROM global_inventory""")).first()
-
-        for barrel in barrels_delivered:
-            match tuple(barrel.potion_type):
-                case BarrelType.RED.value:      red   += ( barrel.ml_per_barrel * barrel.quantity );    gold -= (barrel.price * barrel.quantity)
-                case BarrelType.GREEN.value:    green += ( barrel.ml_per_barrel * barrel.quantity );    gold -= (barrel.price * barrel.quantity)
-                case BarrelType.BLUE.value:     blue  += ( barrel.ml_per_barrel * barrel.quantity );    gold -= (barrel.price * barrel.quantity)
-                case BarrelType.DARK.value:     dark  += ( barrel.ml_per_barrel * barrel.quantity );    gold -= (barrel.price * barrel.quantity)
-
-        connection.execute(sqlalchemy.text(f"""UPDATE global_inventory
-                                               SET gold = {gold}, red = {red}, green = {green}, blue = {blue}, dark = {dark}"""))
+        connection.execute(post_delivery, barrels_delivered)
+    
     return "OK"
+
 
 # Gets called once a day
 @router.post("/plan")
@@ -78,6 +82,10 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
         for size in sizes:
             data[color].update({size: {'volume': 0, 'price': 0, 'qty': 0}})
 
+
+
+    # What the fuck is this?? Stop parsing the title!
+    # Simplify!!
     for barrel in wholesale_catalog:
         color = BarrelType(tuple(barrel.potion_type)).name
         size = barrel.sku[:barrel.sku.index('_')]
@@ -149,6 +157,23 @@ def get_wholesale_purchase_plan(wholesale_catalog: list[Barrel]):
         return purchase_plan
 
 
+# def test_function(wholesale_catalog: list[Barrel]):
+
+#     colors = [(1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1)]
+#     sizes = [200, 500, 2500, 10000]
+
+#     target_ratios = [0.3, 0.3, 0.3, 0.0]
+
+#     with db.engine.begin() as connection:
+#         gold, vol_capacity, red, green, blue, dark, tolerance = connection.execute(sqlalchemy.text(f"""SELECT gold, vol_capacity, red, green, blue, dark, purchase_tolerance
+#                                                                                                        FROM global_inventory""")).first()
+
+#     remaining_space = vol_capacity - (red + green + blue + dark)
+
+
+
+
+
 if __name__ == "__main__":
     my_catalog = [Barrel(sku='MEDIUM_RED_BARREL', ml_per_barrel=2500, potion_type=[1, 0, 0, 0], price=250, quantity=10),
     Barrel(sku='SMALL_RED_BARREL', ml_per_barrel=500, potion_type=[1, 0, 0, 0], price=100, quantity=10),
@@ -160,7 +185,11 @@ if __name__ == "__main__":
     Barrel(sku='MINI_GREEN_BARREL', ml_per_barrel=200, potion_type=[0, 1, 0, 0], price=60, quantity=1),
     Barrel(sku='MINI_BLUE_BARREL', ml_per_barrel=200, potion_type=[0, 0, 1, 0], price=60, quantity=1)]
 
-    print(get_wholesale_purchase_plan(my_catalog))
+    post_deliver_barrels(my_catalog, 8);
+
+    # test_function(my_catalog)
+
+    # get_wholesale_purchase_plan(my_catalog)
 
     # post_deliver_barrels(my_catalog, 420)
 
@@ -173,3 +202,58 @@ if __name__ == "__main__":
     # print(BarrelType._member_names_[0] == 'RED')
     # print(BarrelType['RED'])
     # print(BarrelType([1, 0, 0, 0]).name)
+
+
+
+
+
+        # model = LpProblem(name = 'Barrel_Optimization', sense = LpMaximize)
+    # variables = LpVariable.dicts("Buy", [(color, size) for color in colors for size in sizes], lowBound = 0, cat = 'Integer')
+
+    # volumes = []
+    # lower_bounds = []
+    # upper_bounds = []
+    # inventory_constraints = []
+    # budget_constraints = []
+    # availability_constraints = []
+
+
+    # Prioritize largest differences
+
+
+    # for barrel in wholesale_catalog:
+    #     price = barrel.price  * variables[(tuple(barrel.potion_type)), barrel.ml_per_barrel]
+    #     volume = barrel.ml_per_barrel * variables[(tuple(barrel.potion_type)), barrel.ml_per_barrel]
+
+
+
+
+
+        # model += volume
+        # model += volume >= (1 - tolerance) * target_ratio[tuple(barrel.potion_type)]
+        # model += volume <= (1 + tolerance) * target_ratio[tuple(barrel.potion_type)]
+        # model += volume <= remaining_space
+        # model += price <= gold
+        # model += variables[(tuple(barrel.potion_type)), barrel.ml_per_barrel] <= barrel.quantity
+
+        # volumes.append(volume)
+        # lower_bounds.append(volume >= (1 - tolerance) * target_ratio[tuple(barrel.potion_type)])
+        # upper_bounds.append(volume <= (1 + tolerance) * target_ratio[tuple(barrel.potion_type)])
+        # inventory_constraints.append(volume <= remaining_space)
+        # budget_constraints.append(price <= gold)
+        # availability_constraints.append(variables[(tuple(barrel.potion_type)), barrel.ml_per_barrel] <= barrel.quantity)
+
+
+    # model += lpSum(volumes)
+    # model += lpSum(lower_bounds)
+    # model += lpSum(upper_bounds)
+    # model += lpSum(inventory_constraints)
+    # model += lpSum(budget_constraints)
+
+
+    # # Availability Constraint
+    # for potion in potion_colors:
+    #     for size in sizes:
+    #         model += variables[(potion, size)] <= data[potion][size]['qty']  
+    
+    # model.solve()

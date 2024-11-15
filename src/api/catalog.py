@@ -2,6 +2,7 @@ from fastapi import APIRouter
 import sqlalchemy
 from sqlalchemy import text
 from src import database as db
+from src.api import bottler
 
 router = APIRouter()
 
@@ -41,6 +42,21 @@ def get_catalog():
                                                                         ORDER BY distance ASC
                                                                         LIMIT {6 // len(target_potions)}""")).all())
         
+        upcoming = bottler.get_bottle_plan()
+        for potion in upcoming:
+            potion['potion_type'] = tuple(potion['potion_type'])
+
+        # print([(*potion['potion_type'], potion['quantity']) for potion in upcoming])
+
+        # print( [(*potion['potion_type'],) for potion in upcoming])
+
+        test = connection.execute(text("""SELECT price
+                                          FROM catalog
+                                          WHERE (r, g, d, b) IN (:potion_type)
+                                          """), upcoming).all()
+        
+        print(test)
+
         toggle_listed = []
         for targets in filter(None, best_matches):
             for potion in targets:

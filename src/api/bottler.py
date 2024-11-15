@@ -17,41 +17,29 @@ class PotionInventory(BaseModel):
     quantity: int
 
 
-# TO IMPLEMENT:
-#   STORING ORDER_ID & DELIVERY INFO IN BOTTLE DELIVERY WAREHOUSE
-#   PRICE & LISTING STRATEGY
-
 @router.post("/deliver/{order_id}")
 def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int):
-    """ """
+    '''
+    Posts delivered potions to the potion_ledger.
+    '''
     print(f"potions delievered: {potions_delivered} order_id: {order_id}")
 
-    potions = []
-    total_used = [0, 0, 0, 0]
-    for potion in potions_delivered:
-        potion_name = ''.join([str(num).zfill(3) for num in potion.potion_type])
-        potions.append(dict(zip(['r', 'g', 'b', 'd', 'name', 'qty', 'listed'], [*potion.potion_type, potion_name, potion.quantity, True])))
-        used = [color * potion.quantity for color in potion.potion_type]
-        total_used = list(map(sum, zip(total_used, used)))
+    potions_delivered = [dict(potion) | {"order_id": order_id} for potion in potions_delivered]
 
-    total_used = dict(zip(['red_used', 'green_used', 'blue_used', 'dark_used'], total_used))
-
-    deliver          = text('''INSERT INTO catalog (r, g, b, d, name, qty, listed)
-                               VALUES (:r, :g, :b, :d, :name, :qty, :listed)
-                               ON CONFLICT (r, g, b, d)
-                               DO UPDATE SET qty = catalog.qty + EXCLUDED.qty, listed = TRUE''')
+    post_delivery = text('''WITH new_ledger AS (INSERT INTO potion_ledger (red, green, blue, dark, qty)
+                                                SELECT r, g, b, d, :quantity
+                                                FROM catalog
+                                                WHERE ARRAY[r, g, b, d] = :potion_type
+                                                RETURNING ledger_id)
+                            INSERT INTO potion_ledger_deliveries (order_id, ledger_id)
+                            SELECT :order_id, ledger_id
+                            FROM new_ledger''')
     
-    adjust_inventory = text('''UPDATE global_inventory
-                               SET red = red - :red_used,
-                                   green = green - :green_used,
-                                   blue = blue - :blue_used,
-                                   dark = dark - :dark_used''')
-
     with db.engine.begin() as connection:
-        connection.execute(deliver, potions)
-        connection.execute(adjust_inventory, total_used)
+        connection.execute(post_delivery, potions_delivered)
     
     return "OK"
+
 
 @router.post("/plan")
 def get_bottle_plan():
@@ -127,84 +115,8 @@ def get_bottle_plan():
                                     })
         return bottle_plan
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
     # start_time = time.time()
-    print(get_bottle_plan())
+    # print(get_bottle_plan())
     # print("--- %0.6s seconds ---" % (time.time() - start_time))
     # post_deliver_bottles([PotionInventory(potion_type = [0, 100, 0, 0], quantity = 5)], order_id = 22798)
-
-
-# potions = [PotionInventory(potion_type = [0, 100, 0, 0], quantity = 1)]
-# [PotionInventory(potion_type=[0, 100, 0, 0], quantity=5)] order_id: 22798
-
-# start_time = time.time()
-# print("--- %0.6s seconds ---" % (time.time() - start_time))
-
-# @router.post("/plan")
-# def get_bottle_plan():
-#     """
-#     Go from barrel to bottle.
-#     """
-
-#     #Strategy
-#     target_potions = [(34, 33, 33, 0), (100, 0, 0, 0), (0, 100, 0, 0), (0, 0, 0, 100)]
-#     target_ratio = [0.34, 0.33, 0.33, 0.0]
-#     deviation = 15
-
-#     with db.engine.begin() as connection:
-#         num_capacity, red, green, blue, dark = connection.execute(text("""SELECT num_capacity, red, green, blue, dark
-#                                                                           FROM global_inventory""")).first()
-#         on_hand = [ red, green, blue, dark ]
-
-#         ### TEST
-#         target_ratio = [target_ratio_color * (on_hand_color / sum(on_hand)) for on_hand_color, target_ratio_color in zip(on_hand, target_ratio)]
-
-#         total_potions = connection.execute(text("""SELECT sum(qty)
-#                                                    FROM catalog""")).scalar()
-
-#         capacity_available = num_capacity - total_potions
-
-#         on_hand_matches = []
-#         for potion in target_potions:
-#             on_hand_matches.append(connection.execute(text(f"""WITH target_potion AS (SELECT *
-#                                                                                       FROM (VALUES {potion})
-#                                                                                       AS t(red, green, blue, dark)),
-#                                                                     distance AS (SELECT r, g, b, d, qty, price,
-#                                                                                  SQRT(POWER(catalog.r - target_potion.red, 2) +
-#                                                                                  POWER(catalog.g - target_potion.green, 2) +
-#                                                                                  POWER(catalog.b - target_potion.blue, 2) +
-#                                                                                  POWER(catalog.d - target_potion.dark, 2)) AS distance
-#                                                                                  FROM catalog, target_potion )
-#                                                                SELECT r, g, b, d, qty, price
-#                                                                FROM distance
-#                                                                WHERE distance <= {deviation} AND qty > 0
-#                                                                ORDER BY distance ASC
-#                                                                LIMIT {6 // len(target_potions)}""")).all())
-        
-#         final_on_hand_matches = []
-#         for match in on_hand_matches:
-#             for item in match:
-#                 if item not in final_on_hand_matches:
-#                     final_on_hand_matches.append(item)
-#                     # num_capacity -= item[4]
-
-#         # Creates dictionary using potion_type as id, and quantity to produce optimally as a value (according to ratios)
-#         # target_potion, match_list & target_ratio are all keyed in the same r, g, b, d order & can be iterated on simultaneously
-#         final_order = {}
-#         for target_potion, match_list, ratio in zip(target_potions, final_on_hand_matches, target_ratio):
-
-#             final_order.update(dict.fromkeys([target_potion], int(ratio * capacity_available)))
-
-#             print(final_order)
-
-#             # for potion in match_list:
-#             #     final_order[target_potion] -= potion[4]
-
-#         bottle_plan = []
-#         for potion_type, quantity in final_order.items():
-#             if quantity != 0:
-#                 bottle_plan.append({ "potion_type": list(potion_type),  # [0, 100, 0, 0],
-#                                      "quantity": quantity               # Number of potions to create
-#                                    })
-        
-#         return bottle_plan
