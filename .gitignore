@@ -5,3 +5,4 @@ __pycache__
 /.env
 info.log
 graveyard.py
+.DS_Store

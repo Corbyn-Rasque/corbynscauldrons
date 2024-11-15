@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 from src.api import auth
-import sqlalchemy
+from sqlalchemy import text
 from src import database as db
 
 router = APIRouter(
@@ -12,15 +12,21 @@ router = APIRouter(
 
 @router.post("/reset")
 def reset():
-    """
-    Reset the game state. Gold goes to 100, all potions are removed from
-    inventory, and all barrels are removed from inventory. Carts are all reset.
-    """
+    '''
+    Resets the game state by creating a new timestamp, afterwhich all things will
+    be considered. Default potion & barrel capacity added along with - 100 cost
+    to initialize to + 100 gold overall.
+    '''
+
+    reset = text('''INSERT INTO resets
+                    DEFAULT VALUES;
+                 
+                    INSERT INTO capacity_ledger
+                    DEFAULT VALUES;''')
 
     with db.engine.begin() as connection:
-        connection.execute(sqlalchemy.text("""UPDATE global_inventory
-                                              SET gold = 100, num_capacity = 50, vol_capacity = 10000, red = 0, green = 0, blue = 0, dark = 0"""))
-        connection.execute(sqlalchemy.text("""UPDATE catalog
-                                              SET qty = 0"""))
+        connection.execute(reset);
         
     return "OK"
+
+reset()
