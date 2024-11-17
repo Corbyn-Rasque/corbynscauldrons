@@ -28,5 +28,3 @@ def reset():
         connection.execute(reset);
         
     return "OK"
-
-reset()
