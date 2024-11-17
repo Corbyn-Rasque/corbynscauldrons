@@ -1,10 +1,9 @@
 from fastapi import APIRouter, Depends
-from enum import Enum
 from pydantic import BaseModel
 from src.api import auth
 from sqlalchemy import text
 from src import database as db
-import time
+import pulp
 
 router = APIRouter(
     prefix="/bottler",
@@ -43,80 +42,48 @@ def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int
 
 @router.post("/plan")
 def get_bottle_plan():
-    """
-    Go from barrel to bottle.
-    """
-    date = {'day': int}
+    '''
+    Submits bottle order to be fulfilled, given barrel inventory constraints.
+    '''
+
+    inventory = text('''WITH reset AS (SELECT timestamp AS time
+                                       FROM resets
+                                       ORDER BY timestamp DESC
+                                       LIMIT 1),
+                             inventory AS (SELECT SUM(potion)::INT AS space
+                                           FROM capacity_ledger, reset
+                                           WHERE timestamp >= reset.time)
+                        SELECT (inventory.space - num_potions) AS available_space, ARRAY[red, green, blue, dark] AS volumes
+                        FROM global, inventory''')
+
+    get_potion_strategy =   text('''SELECT ARRAY[cat.r, cat.g, cat.b, cat.d] AS type, cat.price AS price
+                                    FROM strategy
+                                    JOIN strategy_potions ON strategy_potions.day = strategy.day
+                                    JOIN catalog cat ON (cat.r, cat.g, cat.b, cat.d) IN 
+                                                    ((strategy_potions.r, strategy_potions.g, strategy_potions.b, strategy_potions.d))
+                                    WHERE strategy.is_today
+                                    ORDER BY cat.price DESC
+                                    LIMIT 6''')
 
     with db.engine.begin() as connection:
-        num_capacity, red, green, blue, dark = connection.execute(text("""SELECT num_capacity, red, green, blue, dark
-                                                                          FROM global_inventory""")).first()
-        on_hand = [ red, green, blue, dark ]
+        available_space, volumes = connection.execute(inventory).one()
+        potions = connection.execute(get_potion_strategy).mappings().all()
 
-        total_potions = connection.execute(text("""SELECT sum(qty)
-                                                   FROM catalog""")).scalar()
+    # Transposing so each row is a single color requirement for each potion [potion_1_red, potion_2_red, ...], etc
+    color_requirements = list(zip(*[potion['type'] for potion in potions]))
 
-        ratio_denominator = num_capacity - total_potions
+    model = pulp.LpProblem('Potion_Mix', pulp.LpMaximize)
+    variables = [pulp.LpVariable('q'+str(i+1), lowBound = 0, upBound = available_space, cat = 'Integer') for i in range(len(potions))]
 
-        date['day'], *target_ratio, deviation = connection.execute(text("""SELECT day_name, red_ratio, green_ratio, blue_ratio, dark_ratio, deviation
-                                                                           FROM strategy
-                                                                           WHERE is_today = TRUE""")).first()
+    model += pulp.lpSum([(potion['price'] * variable) for potion, variable in zip(potions, variables)])
 
-        target_potions = connection.execute(text("""SELECT r, g, b, d
-                                                    FROM strategy_potions
-                                                    INNER JOIN strategy ON strategy.day = strategy_potions.day
-                                                    WHERE day_name = :day"""), date).all()
-    
-        on_hand_matches = []
-        for potion in target_potions:
-            temp_value = connection.execute(text(f"""WITH target_potion AS (SELECT *
-                                                                            FROM (VALUES {potion})
-                                                                            AS t(red, green, blue, dark)),
-                                                        distance AS (
-                                                                    SELECT r, g, b, d, qty,
-                                                                        SQRT(POWER(catalog.r - target_potion.red, 2) +
-                                                                        POWER(catalog.g - target_potion.green, 2) +
-                                                                        POWER(catalog.b - target_potion.blue, 2) +
-                                                                        POWER(catalog.d - target_potion.dark, 2)
-                                                                    ) AS distancet
-                                                                    FROM catalog, target_potion )
-                                                    SELECT r, g, b, d, qty, distance
-                                                    FROM distance
-                                                    WHERE distancet <= {deviation} AND qty > 0
-                                                    ORDER BY distancet ASC
-                                                    LIMIT {6 // len(target_potions)}""")).all()
-            for potion in temp_value:
-                ratio_denominator += potion[4]
+    for color, volume in zip(color_requirements, volumes):
+        model += pulp.lpSum(qty * variable for qty, variable in zip(color, variables)) <= volume
 
-            on_hand_matches.append(temp_value)
+    model.solve(pulp.PULP_CBC_CMD(msg = False, options = ['--simplex']))
 
-        # Creates dictionary using potion_type as id, and quantity to produce optimally as a value (according to ratios)
-        # target_potion, match_list & target_ratio are all keyed in the same r, g, b, d order & can be iterated on simultaneously
-        final_order = {}
-        for target_potion, match_list, ratio in zip(target_potions, on_hand_matches, target_ratio):
-            final_order.update(dict.fromkeys([target_potion], int(ratio * ratio_denominator)))
-            for potion in match_list:
-                final_order[target_potion] -= potion[4]
+    order = []
+    if model.status:
+        order = [{'potion_type': potion_type['type'], "quantity": int(quantity.varValue)} for potion_type, quantity in zip(potions, variables) if quantity]
 
-            # This line is disgusting (read from bottom right to top left), but is an extremely compact way to:
-            #   - find the ratio of available barrel volume based on the target ratio for the associated target potion type
-            #   - determine the number of potions that can be produced, based on the color requirements and the above allotments
-            #   - return the number of potions possible to produce, based on the limiting color calculated above across all colors
-            #       - if else -> avoids division by zero & replaces overall value with max possible value
-            final_order[target_potion] = min([
-                int(color_allotment // color_vol_requirement) if color_vol_requirement else final_order[target_potion]
-                for color_vol_requirement, color_allotment in zip(target_potion, [color * ratio for color in on_hand])])
-
-        bottle_plan = []
-        for potion_type, quantity in final_order.items():
-            if quantity != 0:
-                bottle_plan.append({ "potion_type": list(potion_type),  # [0, 100, 0, 0],
-                                        "quantity": quantity               # Number of potions to create
-                                    })
-        return bottle_plan
-
-# if __name__ == '__main__':
-    # start_time = time.time()
-    # print(get_bottle_plan())
-    # print("--- %0.6s seconds ---" % (time.time() - start_time))
-    # post_deliver_bottles([PotionInventory(potion_type = [0, 100, 0, 0], quantity = 5)], order_id = 22798)
+    return order

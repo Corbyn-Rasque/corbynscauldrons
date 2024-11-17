@@ -36,10 +36,7 @@ def search_orders(
 
     customer_name = '%' + customer_name + '%'
     potion_sku    = '%' + potion_sku    + '%'
-    # search_page   = bool(search_page) if not search_page else search_page
-
-
-
+  
     search_query = text(f'''SELECT customers.id AS line_item_id,
                                    customers.name AS customer_name,
                                    catalog.name AS item_sku,
