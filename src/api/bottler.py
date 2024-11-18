@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from src.api import auth
 from sqlalchemy import text
 from src import database as db
+from operator import add
 from pulp import LpProblem, LpVariable, lpSum, LpMaximize, PULP_CBC_CMD
 
 router = APIRouter(
@@ -23,6 +24,9 @@ def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int
     '''
     print(f"potions delievered: {potions_delivered} order_id: {order_id}")
 
+    color_volume_used = list(map(sum, list(zip(*[[color * potion.quantity for color in potion.potion_type] for potion in potions_delivered]))))
+    color_volume_used = dict(zip(['red', 'green', 'blue', 'dark'], color_volume_used))
+
     potions_delivered = [dict(potion) | {"order_id": order_id} for potion in potions_delivered]
 
     post_delivery = text('''WITH new_ledger AS (INSERT INTO potion_ledger (red, green, blue, dark, qty)
@@ -34,8 +38,12 @@ def post_deliver_bottles(potions_delivered: list[PotionInventory], order_id: int
                             SELECT :order_id, ledger_id
                             FROM new_ledger''')
     
+    debit_barrel_volume =   text('''INSERT INTO barrel_ledger (red, green, blue, dark)
+                                VALUES (-:red, -:green, -:blue, -:dark)''')
+
     with db.engine.begin() as connection:
         connection.execute(post_delivery, potions_delivered)
+        connection.execute(debit_barrel_volume, color_volume_used)
     
     return "OK"
 

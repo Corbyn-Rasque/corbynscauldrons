@@ -33,6 +33,3 @@ def get_catalog():
         potions = connection.execute(get_catalog).mappings().all()
 
     return potions
-
-if __name__ == '__main__':
-     print(get_catalog())
