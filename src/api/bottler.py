@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from src.api import auth
 from sqlalchemy import text
 from src import database as db
-import pulp
+from pulp import LpProblem, LpMaximize, LpVariable, lpSum, PULP_CBC_CMD
 
 router = APIRouter(
     prefix="/bottler",
@@ -72,15 +72,15 @@ def get_bottle_plan():
     # Transposing so each row is a single color requirement for each potion [potion_1_red, potion_2_red, ...], etc
     color_requirements = list(zip(*[potion['type'] for potion in potions]))
 
-    model = pulp.LpProblem('Potion_Mix', pulp.LpMaximize)
-    variables = [pulp.LpVariable('q'+str(i+1), lowBound = 0, upBound = available_space, cat = 'Integer') for i in range(len(potions))]
+    model = LpProblem('Potion_Mix', LpMaximize)
+    variables = [LpVariable('q'+str(i+1), lowBound = 0, upBound = available_space, cat = 'Integer') for i in range(len(potions))]
 
-    model += pulp.lpSum([(potion['price'] * variable) for potion, variable in zip(potions, variables)])
+    model += lpSum([(potion['price'] * variable) for potion, variable in zip(potions, variables)])
 
     for color, volume in zip(color_requirements, volumes):
-        model += pulp.lpSum(qty * variable for qty, variable in zip(color, variables)) <= volume
+        model += lpSum(qty * variable for qty, variable in zip(color, variables)) <= volume
 
-    model.solve(pulp.PULP_CBC_CMD(msg = False, options = ['--simplex']))
+    model.solve(PULP_CBC_CMD(msg = False, options = ['--simplex']))
 
     order = []
     if model.status:
