@@ -52,7 +52,8 @@ def search_orders(
                             JOIN carts ON carts.cart_id = potion_ledger_carts.cart_id
                             JOIN customers ON customers.id = carts.customer_id
                             GROUP BY customers.id, catalog.name, potion_ledger.ledger_id
-                            HAVING customers.name ILIKE :customer_name OR catalog.name ILIKE :potion_sku
+                            HAVING (:customer_name = '' OR customers.name ILIKE :customer_name)
+                                AND (:potion_sku = '' OR catalog.name ILIKE :potion_sku)
                             ORDER BY {sort_col.value} {sort_order.upper()}
                             LIMIT 5 OFFSET :search_page * 5''')
 
