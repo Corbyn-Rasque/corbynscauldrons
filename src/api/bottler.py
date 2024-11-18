@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from src.api import auth
 from sqlalchemy import text
 from src import database as db
-from pulp import LpProblem, LpMaximize, LpVariable, lpSum, PULP_CBC_CMD
+from pulp import LpProblem, LpVariable, lpSum, LpMaximize, PULP_CBC_CMD
 
 router = APIRouter(
     prefix="/bottler",
