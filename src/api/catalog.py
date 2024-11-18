@@ -26,7 +26,8 @@ def get_catalog():
                             JOIN potion_ledger ON (potion_ledger.red, potion_ledger.green, potion_ledger.blue, potion_ledger.dark)
                                  IN ((catalog.r, catalog.g, catalog.b, catalog.d))
                             WHERE potion_ledger.timestamp >= reset.time AND catalog.listed
-                            GROUP BY catalog.name, catalog.price, catalog.r, catalog.g, catalog.b, catalog.d''')
+                            GROUP BY catalog.name, catalog.price, catalog.r, catalog.g, catalog.b, catalog.d
+                            HAVING COALESCE(SUM(potion_ledger.qty), 0)::INT > 0''')
 
     with db.engine.begin() as connection:
         potions = connection.execute(get_catalog).mappings().all()
