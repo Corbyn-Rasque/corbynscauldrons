@@ -87,10 +87,10 @@ def post_visits(visit_id: int, customers: list[Customer]):
 
     visit_insert =  text('''WITH customer AS (INSERT INTO customers (name, class, level)
                                               VALUES (:name, :class, :level)
-                                              ON CONFLICT DO NOTHING
+                                              ON CONFLICT (name, class, level) DO UPDATE SET id = customers.id
                                               RETURNING id)
                             INSERT INTO visits (visit_id, customer_id)
-                            VALUES (:visit_id, (SELECT id FROM customer))''')
+                            VALUES (:visit_id, (SELECT id FROM customer));''')
 
     with db.engine.begin() as connection:
         connection.execute(visit_insert, customer_group)
