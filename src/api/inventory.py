@@ -97,16 +97,16 @@ def get_capacity_plan():
     
     with db.engine.begin() as connection:
         
-        gold = connection.execute(get_gold).one()
+        gold = connection.execute(get_gold).scalar_one()
         potion_pressure = connection.execute(get_potions_pressure).all()
         volume_pressure = connection.execute(get_volume_pressure).all()
-    
+
     if potion_pressure and min([(inventory - potions) for (potions, inventory) in potion_pressure]) < 5:
-        capacity_plan.potion_capacity = 1 if gold > 2000 else 0
+        capacity_plan.potion_capacity = 1 if gold >= 2000 else 0
         gold -= 1000
 
     if volume_pressure and min([(inventory - volume) for (volume, inventory) in volume_pressure]) < 500:
-        capacity_plan.potion_capacity = 1 if gold > 2000 else 0
+        capacity_plan.potion_capacity = 1 if gold >= 2000 else 0
 
     return dict(capacity_plan)
 
