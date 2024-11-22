@@ -81,12 +81,15 @@ def get_bottle_plan():
     color_requirements = list(zip(*[potion['type'] for potion in potions]))
 
     model = LpProblem('Potion_Mix', LpMaximize)
-    variables = [LpVariable('q'+str(i+1), lowBound = 0, upBound = available_space, cat = 'Integer') for i in range(len(potions))]
+    variables = [LpVariable('q'+str(i+1), lowBound = 0, cat = 'Integer') for i in range(len(potions))]
 
     model += lpSum([(potion['price'] * variable) for potion, variable in zip(potions, variables)])
 
     for color, volume in zip(color_requirements, volumes):
         model += lpSum(qty * variable for qty, variable in zip(color, variables)) <= volume
+    
+    # Added inventory space constraint to not exceed space available
+    model += lpSum(variables) <= available_space
 
     model.solve(PULP_CBC_CMD(msg = False, options = ['--simplex']))
 
